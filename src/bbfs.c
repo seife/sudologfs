@@ -44,6 +44,8 @@
 /* replace the old log_syscall() behaviour of modifying return code if it was < 0 */
 #define RETURN(x) do { int __y = x;if (__y < 0) return -errno; else return __y; } while(0)
 
+/* primitive access control option, as we need to mount with "allow other" */
+#define CHECKPERM do { if (fuse_get_context()->uid) return -EACCES; } while(0)
 
 //  All the paths I see are relative to the root of the mounted
 //  filesystem.  In order to get to the underlying filesystem, I need to
@@ -72,6 +74,7 @@ int bb_getattr(const char *path, struct stat *statbuf)
 {
     int retstat;
     char fpath[PATH_MAX];
+    CHECKPERM;
     bb_fullpath(fpath, path);
 
     retstat = lstat(fpath, statbuf);
@@ -95,6 +98,7 @@ int bb_readlink(const char *path, char *link, size_t size)
 {
     int retstat;
     char fpath[PATH_MAX];
+    CHECKPERM;
 
     retstat = readlink(fpath, link, size - 1);
     if (retstat >= 0) {
@@ -115,6 +119,7 @@ int bb_mknod(const char *path, mode_t mode, dev_t dev)
 {
     int retstat;
     char fpath[PATH_MAX];
+    CHECKPERM;
     bb_fullpath(fpath, path);
     
     // On Linux this could just be 'mknod(path, mode, dev)' but this
@@ -139,6 +144,7 @@ int bb_mknod(const char *path, mode_t mode, dev_t dev)
 int bb_mkdir(const char *path, mode_t mode)
 {
     char fpath[PATH_MAX];
+    CHECKPERM;
     bb_fullpath(fpath, path);
     RETURN(mkdir(fpath, mode));
 }
@@ -147,6 +153,7 @@ int bb_mkdir(const char *path, mode_t mode)
 int bb_unlink(const char *path)
 {
     char fpath[PATH_MAX];
+    CHECKPERM;
     bb_fullpath(fpath, path);
     RETURN(unlink(fpath));
 }
@@ -155,6 +162,7 @@ int bb_unlink(const char *path)
 int bb_rmdir(const char *path)
 {
     char fpath[PATH_MAX];
+    CHECKPERM;
     bb_fullpath(fpath, path);
     RETURN(rmdir(fpath));
 }
@@ -167,6 +175,7 @@ int bb_rmdir(const char *path)
 int bb_symlink(const char *path, const char *link)
 {
     char flink[PATH_MAX];
+    CHECKPERM;
     bb_fullpath(flink, link);
     RETURN(symlink(path, flink));
 }
@@ -177,6 +186,7 @@ int bb_rename(const char *path, const char *newpath)
 {
     char fpath[PATH_MAX];
     char fnewpath[PATH_MAX];
+    CHECKPERM;
     bb_fullpath(fpath, path);
     bb_fullpath(fnewpath, newpath);
     RETURN(rename(fpath, fnewpath));
@@ -186,6 +196,7 @@ int bb_rename(const char *path, const char *newpath)
 int bb_link(const char *path, const char *newpath)
 {
     char fpath[PATH_MAX], fnewpath[PATH_MAX];
+    CHECKPERM;
     bb_fullpath(fpath, path);
     bb_fullpath(fnewpath, newpath);
     RETURN(link(fpath, fnewpath));
@@ -195,6 +206,7 @@ int bb_link(const char *path, const char *newpath)
 int bb_chmod(const char *path, mode_t mode)
 {
     char fpath[PATH_MAX];
+    CHECKPERM;
     bb_fullpath(fpath, path);
     RETURN(chmod(fpath, mode));
 }
@@ -204,6 +216,7 @@ int bb_chown(const char *path, uid_t uid, gid_t gid)
   
 {
     char fpath[PATH_MAX];
+    CHECKPERM;
     bb_fullpath(fpath, path);
     RETURN(chown(fpath, uid, gid));
 }
@@ -212,6 +225,7 @@ int bb_chown(const char *path, uid_t uid, gid_t gid)
 int bb_truncate(const char *path, off_t newsize)
 {
     char fpath[PATH_MAX];
+    CHECKPERM;
     bb_fullpath(fpath, path);
     RETURN(truncate(fpath, newsize));
 }
@@ -221,6 +235,7 @@ int bb_truncate(const char *path, off_t newsize)
 int bb_utime(const char *path, struct utimbuf *ubuf)
 {
     char fpath[PATH_MAX];
+    CHECKPERM;
     bb_fullpath(fpath, path);
 
     RETURN(utime(fpath, ubuf));
@@ -241,6 +256,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     int retstat = 0;
     int fd;
     char fpath[PATH_MAX];
+    CHECKPERM;
     bb_fullpath(fpath, path);
 
     // if the open call succeeds, my retstat is the file descriptor,
@@ -273,6 +289,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
     int retstat = 0;
+    CHECKPERM;
 
     retstat = pread(fi->fh, buf, size, offset);
     RETURN(retstat);
@@ -292,6 +309,7 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
 	     struct fuse_file_info *fi)
 {
     int retstat = 0;
+    CHECKPERM;
 
     retstat = pwrite(fi->fh, buf, size, offset);
     RETURN(retstat);
@@ -308,6 +326,7 @@ int bb_statfs(const char *path, struct statvfs *statv)
 {
     int retstat = 0;
     char fpath[PATH_MAX];
+    CHECKPERM;
     bb_fullpath(fpath, path);
     
     // get stats for underlying filesystem
@@ -376,6 +395,7 @@ int bb_release(const char *path, struct fuse_file_info *fi)
 int bb_fsync(const char *path, int datasync, struct fuse_file_info *fi)
 {
     // some unix-like systems (notably freebsd) don't have a datasync call
+    CHECKPERM;
 #ifdef HAVE_FDATASYNC
     if (datasync)
 	RETURN(fdatasync(fi->fh));
@@ -389,6 +409,7 @@ int bb_fsync(const char *path, int datasync, struct fuse_file_info *fi)
 int bb_setxattr(const char *path, const char *name, const char *value, size_t size, int flags)
 {
     char fpath[PATH_MAX];
+    CHECKPERM;
     bb_fullpath(fpath, path);
 
     RETURN(lsetxattr(fpath, name, value, size, flags));
@@ -399,6 +420,7 @@ int bb_getxattr(const char *path, const char *name, char *value, size_t size)
 {
     int retstat = 0;
     char fpath[PATH_MAX];
+    CHECKPERM;
     bb_fullpath(fpath, path);
 
     retstat = lgetxattr(fpath, name, value, size);
@@ -411,6 +433,7 @@ int bb_listxattr(const char *path, char *list, size_t size)
     int retstat = 0;
     char fpath[PATH_MAX];
     char *ptr;
+    CHECKPERM;
     bb_fullpath(fpath, path);
 
     retstat = llistxattr(fpath, list, size);
@@ -422,6 +445,7 @@ int bb_listxattr(const char *path, char *list, size_t size)
 int bb_removexattr(const char *path, const char *name)
 {
     char fpath[PATH_MAX];
+    CHECKPERM;
     bb_fullpath(fpath, path);
 
     RETURN(lremovexattr(fpath, name));
@@ -440,6 +464,7 @@ int bb_opendir(const char *path, struct fuse_file_info *fi)
     DIR *dp;
     int retstat = 0;
     char fpath[PATH_MAX];
+    CHECKPERM;
     bb_fullpath(fpath, path);
 
     // since opendir returns a pointer, takes some custom handling of
@@ -481,6 +506,7 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
     int retstat = 0;
     DIR *dp;
     struct dirent *de;
+    CHECKPERM;
     
     // once again, no need for fullpath -- but note that I need to cast fi->fh
     dp = (DIR *) (uintptr_t) fi->fh;
@@ -581,6 +607,7 @@ int bb_access(const char *path, int mask)
 {
     int retstat = 0;
     char fpath[PATH_MAX];
+    CHECKPERM;
     bb_fullpath(fpath, path);
     
     retstat = access(fpath, mask);
@@ -617,6 +644,7 @@ int bb_access(const char *path, int mask)
 int bb_ftruncate(const char *path, off_t offset, struct fuse_file_info *fi)
 {
     int retstat = 0;
+    CHECKPERM;
     retstat = ftruncate(fi->fh, offset);
     RETURN(retstat);
 }
@@ -636,7 +664,7 @@ int bb_ftruncate(const char *path, off_t offset, struct fuse_file_info *fi)
 int bb_fgetattr(const char *path, struct stat *statbuf, struct fuse_file_info *fi)
 {
     int retstat = 0;
-    
+    CHECKPERM;
     // On FreeBSD, trying to do anything with the mountpoint ends up
     // opening it, and then using the FD for an fgetattr.  So in the
     // special case of a path of "/", I need to do a getattr on the
@@ -702,6 +730,7 @@ int main(int argc, char *argv[])
     int fuse_stat;
     struct bb_state *bb_data;
 
+#if 0
     // bbfs doesn't do any access checking on its own (the comment
     // blocks in fuse.h mention some of the functions that need
     // accesses checked -- but note there are other functions, like
@@ -715,6 +744,7 @@ int main(int argc, char *argv[])
 	fprintf(stderr, "Running BBFS as root opens unnacceptable security holes\n");
 	return 1;
     }
+#endif
 
     // See which version of fuse we're running
     fprintf(stderr, "Fuse library version %d.%d\n", FUSE_MAJOR_VERSION, FUSE_MINOR_VERSION);
@@ -736,10 +766,14 @@ int main(int argc, char *argv[])
     // Pull the rootdir out of the argument list and save it in my
     // internal data
     bb_data->rootdir = realpath(argv[argc-2], NULL);
+#if 0
     argv[argc-2] = argv[argc-1];
     argv[argc-1] = NULL;
     argc--;
-    
+#else
+    /* ugly hack :-) */
+    argv[argc-2] = "-oallow_other";
+#endif
     // turn over control to fuse
     fprintf(stderr, "about to call fuse_main\n");
     fuse_stat = fuse_main(argc, argv, &bb_oper, bb_data);
