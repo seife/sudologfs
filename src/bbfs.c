@@ -443,12 +443,10 @@ int bb_listxattr(const char *path, char *list, size_t size)
 {
     int retstat = 0;
     char fpath[PATH_MAX];
-    char *ptr;
     CHECKPERM;
     bb_fullpath(fpath, path);
 
     retstat = llistxattr(fpath, list, size);
-    
     RETURN(retstat);
 }
 
