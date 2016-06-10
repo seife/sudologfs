@@ -24,6 +24,7 @@
 
 #include "config.h"
 
+#include "my_syslog.h"
 #include "params.h"
 
 #include <ctype.h>
@@ -321,6 +322,7 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
     CHECKPERM;
 
     retstat = pwrite(FILE_STATE->fd, buf, size, offset);
+    log_send(BB_DATA, FILE_STATE, path, buf, size);
     RETURN(retstat);
 }
 
@@ -783,6 +785,7 @@ int main(int argc, char *argv[])
     /* ugly hack :-) */
     argv[argc-2] = "-oallow_other";
 #endif
+    bb_data->log_fd = log_open("localhost", &bb_data->log_addr);
     // turn over control to fuse
     fprintf(stderr, "about to call fuse_main\n");
     fuse_stat = fuse_main(argc, argv, &bb_oper, bb_data);
