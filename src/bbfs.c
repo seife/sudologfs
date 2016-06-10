@@ -255,8 +255,13 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 {
     int retstat = 0;
     int fd;
+    struct file_state *file_state;
     char fpath[PATH_MAX];
     CHECKPERM;
+    file_state = calloc(sizeof(struct file_state), 1);
+    if (!file_state)
+	return -ENOMEM;
+
     bb_fullpath(fpath, path);
 
     // if the open call succeeds, my retstat is the file descriptor,
@@ -265,7 +270,9 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     fd = open(fpath, fi->flags);
     if (fd < 0)
 	retstat = -errno;
-    fi->fh = fd;
+
+    file_state->fd = fd;
+    fi->fh = (uint64_t)file_state;
 
     return retstat;
 }
@@ -291,7 +298,7 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
     int retstat = 0;
     CHECKPERM;
 
-    retstat = pread(fi->fh, buf, size, offset);
+    retstat = pread(FILE_STATE->fd, buf, size, offset);
     RETURN(retstat);
 }
 
@@ -311,7 +318,7 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
     int retstat = 0;
     CHECKPERM;
 
-    retstat = pwrite(fi->fh, buf, size, offset);
+    retstat = pwrite(FILE_STATE->fd, buf, size, offset);
     RETURN(retstat);
 }
 
@@ -382,7 +389,9 @@ int bb_release(const char *path, struct fuse_file_info *fi)
 {
     // We need to close the file.  Had we allocated any resources
     // (buffers etc) we'd need to free them here as well.
-    RETURN(close(fi->fh));
+    int ret = close(FILE_STATE->fd);
+    free(FILE_STATE);
+    RETURN(ret);
 }
 
 /** Synchronize file contents
@@ -398,10 +407,10 @@ int bb_fsync(const char *path, int datasync, struct fuse_file_info *fi)
     CHECKPERM;
 #ifdef HAVE_FDATASYNC
     if (datasync)
-	RETURN(fdatasync(fi->fh));
+	RETURN(fdatasync(FILE_STATE->fd));
     else
 #endif	
-	RETURN(fsync(fi->fh));
+	RETURN(fsync(FILE_STATE->fd));
 }
 
 #ifdef HAVE_SYS_XATTR_H
@@ -645,7 +654,7 @@ int bb_ftruncate(const char *path, off_t offset, struct fuse_file_info *fi)
 {
     int retstat = 0;
     CHECKPERM;
-    retstat = ftruncate(fi->fh, offset);
+    retstat = ftruncate(FILE_STATE->fd, offset);
     RETURN(retstat);
 }
 
@@ -672,7 +681,7 @@ int bb_fgetattr(const char *path, struct stat *statbuf, struct fuse_file_info *f
     if (!strcmp(path, "/"))
 	return bb_getattr(path, statbuf);
     
-    retstat = fstat(fi->fh, statbuf);
+    retstat = fstat(FILE_STATE->fd, statbuf);
     RETURN(retstat);
 }
 
