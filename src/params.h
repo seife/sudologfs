@@ -25,6 +25,8 @@
 #include <stdio.h>
 struct bb_state {
     char *rootdir;
+    struct sockaddr_in log_addr;
+    int log_fd;
 };
 #define BB_DATA ((struct bb_state *) fuse_get_context()->private_data)
 
