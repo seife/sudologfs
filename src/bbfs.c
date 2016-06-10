@@ -22,6 +22,8 @@
   bbfs.log, in the directory from which you run bbfs.
 */
 
+#include "config.h"
+
 #include "params.h"
 
 #include <ctype.h>
