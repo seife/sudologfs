@@ -601,6 +601,10 @@ void *bb_init(struct fuse_conn_info *conn)
  */
 void bb_destroy(void *userdata)
 {
+	/* clean up, free allocated stuff */
+	struct bb_state *bb_data = (struct bb_state *)userdata;
+	free(bb_data->rootdir);
+	free(bb_data);
 }
 
 /**
@@ -776,6 +780,7 @@ int main(int argc, char *argv[])
 
 	// Pull the rootdir out of the argument list and save it in my
 	// internal data
+	/* realpath malloc()'s the space, so free it in destroy() */
 	bb_data->rootdir = realpath(argv[argc-2], NULL);
 #if 0
 	argv[argc-2] = argv[argc-1];
