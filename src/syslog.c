@@ -80,12 +80,25 @@ int log_send(struct bb_state *bb_data, struct file_state *file_state,
 	n += strftime(buf + n, 1024-n, "%b %e %T ", &tm);
 	strncat(buf + n, hn, 1024-n);
 	n += strlen(hn);
-	n += sprintf(buf + n, " %s:%08x ", filename, 0);
+	m = snprintf(buf + n, 1024-n, " %s:%08x ", filename, 0);
+	if (m >= 1024-n) {
+		syslog(LOG_ERR, "filename too long, not sending log message");
+		syslog(LOG_ERR, "%s", filename);
+		free(b64);
+		return -1;
+	}
+	n += m;
 
 	/* "size@offset " */
 	l = sprintf(off, "%x@%" PRIx64 " ", len, offset);
 
 	chunk = 1023 - n;
+	if (chunk < 128) {
+		syslog(LOG_ERR, "not enough space in packet (%d), not sending log message", chunk);
+		syslog(LOG_ERR, "%s", filename);
+		free(b64);
+		return -1;
+	}
 
 	for (i = 0; i < b64len; /*i+= chunk*/) {
 		sprintf(buf + n -9 , "%08x ", ++file_state->seq);
