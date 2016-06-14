@@ -783,6 +783,12 @@ int main(int argc, char *argv[])
 	/* realpath malloc()'s the space, so free it in destroy() */
 	bb_data->rootdir = realpath(argv[argc-3], NULL);
 	bb_data->log_fd = log_open(argv[argc-1], &bb_data->log_addr);
+	if (bb_data->log_fd < 0) {
+		fprintf(stderr, "Resolving '%s' failed, this is a fatal error.\n", argv[argc-1]);
+		free(bb_data->rootdir);
+		free(bb_data);
+		return 1;
+	}
 	/* ugly hack :-) */
 	argv[argc-3] = "-oallow_other";
 	/* remove loghost parameter */

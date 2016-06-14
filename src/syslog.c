@@ -22,9 +22,10 @@ int log_open(char *hostname, struct sockaddr_in *addr)
 		fprintf(stderr, "socket: %m\n");
 		return sock;
 	}
+	/* gethostbyname(3): "Here name is either a hostname or an IPv4 address in standard dot notation" */
 	srv = gethostbyname(hostname);
 	if (!srv) {
-		fprintf(stderr, "gethostbyname(%s): %m\n", hostname);
+		fprintf(stderr, "gethostbyname(%s): %s\n", hostname, strerror(h_errno));
 		return -1;
 	}
 	memset(addr, 0, sizeof(struct sockaddr_in));
