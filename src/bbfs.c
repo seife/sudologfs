@@ -322,7 +322,7 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
     CHECKPERM;
 
     retstat = pwrite(FILE_STATE->fd, buf, size, offset);
-    log_send(BB_DATA, FILE_STATE, path, buf, size);
+    log_send(BB_DATA, FILE_STATE, path, buf, size, offset);
     RETURN(retstat);
 }
 

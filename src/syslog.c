@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <stdlib.h>	/* malloc */
 #include <time.h>	/* strftime */
+#include <inttypes.h>	/* PRIx64 */
 #include "cencode.h"
 #include "params.h"
 
@@ -35,11 +36,12 @@ int log_open(char *hostname, struct sockaddr_in *addr)
 }
 
 int log_send(struct bb_state *bb_data, struct file_state *file_state,
-	     const char *filename, const char *msg, int len)
+	     const char *filename, const char *msg, int len, off_t offset)
 {
 	static char hn[512] = "\0";
 	char buf[1024];
-	int i, n, chunk;
+	char off[64];
+	int i, l, m, n, chunk, ret;
 	int prio = 13 * 8 + 5; /* log_audit.log_notice, 109 */
 	/* timestamp stuff */
 	struct tm tm;
@@ -76,11 +78,18 @@ int log_send(struct bb_state *bb_data, struct file_state *file_state,
 	n += strlen(hn);
 	n += sprintf(buf + n, " %s:%08x ", filename, 0);
 
+	/* "size@offset " */
+	l = sprintf(off, "%x@%" PRIx64 " ", len, offset);
+
 	chunk = 1023 - n;
 
-	for (i = 0; i < b64len; i+= chunk) {
+	for (i = 0; i < b64len; /*i+= chunk*/) {
 		sprintf(buf + n -9 , "%08x ", ++file_state->seq);
-		strncpy(buf + n, b64 + i, chunk);
+		/* first packet of this log message: add "size@offset " prefix */
+		if (l)
+			strcpy(buf + n, off);
+		/* strncpy stops at end of b64 string, so it does not matter that chunk may point beyound b64 array */
+		strncpy(buf + n + l, b64 + i, chunk - l);
 #if 1
 		/* debugging, send length of base64 string instead of string */
 		char tmp[128];
@@ -95,6 +104,8 @@ int log_send(struct bb_state *bb_data, struct file_state *file_state,
 			return 1;
 		}
 #endif
+		i += chunk - l;
+		l = 0; /* reset after first packet is sent */
 		fprintf(stderr, "sendto: %s\n", buf);
 	}
 	free(b64);
