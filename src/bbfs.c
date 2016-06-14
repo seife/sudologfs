@@ -1,6 +1,18 @@
 /*
+   sudolog File System
+   Copyright (C) 2016 Stefan Seyfried, <seife@tuxbox-git.slipkontur.de>
+
+   This file system is intended to immediately ship the contents of the
+   created files to a remote syslog server via UDP syslog protocol, to
+   avoid tampering of the files locally.
+   It is specifically tailored to the "log_output" feature of sudo, so
+   some deficiencies of this implementation (e.g. that long filenames
+   do not work well...) are accepted.
+
+   Based upon:
    Big Brother File System
    Copyright (C) 2012 Joseph J. Pfeiffer, Jr., Ph.D. <pfeiffer@cs.nmsu.edu>
+   http://www.cs.nmsu.edu/~pfeiffer/fuse-tutorial/
 
    This program can be distributed under the terms of the GNU GPLv3.
    See the file COPYING.
@@ -10,17 +22,7 @@
    His code is licensed under the LGPLv2.
    A copy of that code is included in the file fuse.h
 
-   The point of this FUSE filesystem is to provide an introduction to
-   FUSE.  It was my first FUSE filesystem as I got to know the
-   software; hopefully, the comments in this code will help people who
-   follow later to get a gentler introduction.
-
-   This might be called a no-op filesystem:  it doesn't impose
-   filesystem semantics on top of any other existing structure.  It
-   simply reports the requests that come in, and passes them to an
-   underlying filesystem.  The information is saved in a logfile named
-   bbfs.log, in the directory from which you run bbfs.
-   */
+ */
 
 #include "config.h"
 
