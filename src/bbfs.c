@@ -736,7 +736,7 @@ struct fuse_operations bb_oper = {
 
 void bb_usage()
 {
-	fprintf(stderr, "usage:  bbfs [FUSE and mount options] rootDir mountPoint\n");
+	fprintf(stderr, "usage:  bbfs [FUSE and mount options] rootDir mountPoint loghost\n");
 	abort();
 }
 
@@ -769,7 +769,7 @@ int main(int argc, char *argv[])
 	// start with a hyphen (this will break if you actually have a
 	// rootpoint or mountpoint whose name starts with a hyphen, but so
 	// will a zillion other programs)
-	if ((argc < 3) || (argv[argc-2][0] == '-') || (argv[argc-1][0] == '-'))
+	if ((argc < 4) || (argv[argc-3][0] == '-') || (argv[argc-2][0] == '-') || (argv[argc-1][0] == '-'))
 		bb_usage();
 
 	bb_data = malloc(sizeof(struct bb_state));
@@ -781,16 +781,13 @@ int main(int argc, char *argv[])
 	// Pull the rootdir out of the argument list and save it in my
 	// internal data
 	/* realpath malloc()'s the space, so free it in destroy() */
-	bb_data->rootdir = realpath(argv[argc-2], NULL);
-#if 0
-	argv[argc-2] = argv[argc-1];
+	bb_data->rootdir = realpath(argv[argc-3], NULL);
+	bb_data->log_fd = log_open(argv[argc-1], &bb_data->log_addr);
+	/* ugly hack :-) */
+	argv[argc-3] = "-oallow_other";
+	/* remove loghost parameter */
 	argv[argc-1] = NULL;
 	argc--;
-#else
-	/* ugly hack :-) */
-	argv[argc-2] = "-oallow_other";
-#endif
-	bb_data->log_fd = log_open("localhost", &bb_data->log_addr);
 	// turn over control to fuse
 	fprintf(stderr, "about to call fuse_main\n");
 	fuse_stat = fuse_main(argc, argv, &bb_oper, bb_data);
