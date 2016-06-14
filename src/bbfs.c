@@ -747,27 +747,11 @@ int main(int argc, char *argv[])
 	int fuse_stat;
 	struct bb_state *bb_data;
 
-#if 0
-	// bbfs doesn't do any access checking on its own (the comment
-	// blocks in fuse.h mention some of the functions that need
-	// accesses checked -- but note there are other functions, like
-	// chown(), that also need checking!).  Since running bbfs as root
-	// will therefore open Metrodome-sized holes in the system
-	// security, we'll check if root is trying to mount the filesystem
-	// and refuse if it is.  The somewhat smaller hole of an ordinary
-	// user doing it with the allow_other flag is still there because
-	// I don't want to parse the options string.
-	if ((getuid() == 0) || (geteuid() == 0)) {
-		fprintf(stderr, "Running BBFS as root opens unnacceptable security holes\n");
-		return 1;
-	}
-#endif
-
 	// See which version of fuse we're running
 	fprintf(stderr, "Fuse library version %d.%d\n", FUSE_MAJOR_VERSION, FUSE_MINOR_VERSION);
 
 	// Perform some sanity checking on the command line:  make sure
-	// there are enough arguments, and that neither of the last two
+	// there are enough arguments, and that neither of the last three
 	// start with a hyphen (this will break if you actually have a
 	// rootpoint or mountpoint whose name starts with a hyphen, but so
 	// will a zillion other programs)
