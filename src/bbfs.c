@@ -41,6 +41,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <syslog.h>
 
 #ifdef HAVE_SYS_XATTR_H
 #include <sys/xattr.h>
@@ -777,13 +778,14 @@ int main(int argc, char *argv[])
 	}
 	/* ugly hack :-) */
 	argv[argc-3] = "-oallow_other";
+	syslog(LOG_NOTICE, "mounting %s to %s, logging to %s", bb_data->rootdir, argv[argc-2], argv[argc-1]);
 	/* remove loghost parameter */
 	argv[argc-1] = NULL;
 	argc--;
 	// turn over control to fuse
-	fprintf(stderr, "about to call fuse_main\n");
 	fuse_stat = fuse_main(argc, argv, &bb_oper, bb_data);
-	fprintf(stderr, "fuse_main returned %d\n", fuse_stat);
+	syslog(LOG_NOTICE, "exiting with %d", fuse_stat);
+	closelog();
 
 	return fuse_stat;
 }

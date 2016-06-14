@@ -8,6 +8,7 @@
 #include <arpa/inet.h>	/* inet_ntoa */
 #include <errno.h>
 #include <unistd.h>
+#include <syslog.h>
 #include <stdlib.h>	/* malloc */
 #include <time.h>	/* strftime */
 #include <inttypes.h>	/* PRIx64 */
@@ -17,15 +18,17 @@
 int log_open(char *hostname, struct sockaddr_in *addr)
 {
 	struct hostent *srv;
-	int sock = socket(AF_INET, SOCK_DGRAM, 0);
+	int sock;
+	openlog(NULL, LOG_PERROR|LOG_PID, LOG_DAEMON);
+	sock = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sock < 0) {
-		fprintf(stderr, "socket: %m\n");
+		syslog(LOG_ERR, "socket: %m");
 		return sock;
 	}
 	/* gethostbyname(3): "Here name is either a hostname or an IPv4 address in standard dot notation" */
 	srv = gethostbyname(hostname);
 	if (!srv) {
-		fprintf(stderr, "gethostbyname(%s): %s\n", hostname, strerror(h_errno));
+		syslog(LOG_ERR, "gethostbyname(%s): %s", hostname, strerror(h_errno));
 		return -1;
 	}
 	memset(addr, 0, sizeof(struct sockaddr_in));
@@ -54,7 +57,7 @@ int log_send(struct bb_state *bb_data, struct file_state *file_state,
 	char *b64 = (char *)malloc(len*4/3+8);
 	char *c = b64;
 	if (!b64) {
-		fprintf(stderr, "%s: malloc failed!\n", __func__);
+		syslog(LOG_ERR, "%s: malloc failed!", __func__);
 		return -1;
 	}
 
@@ -103,7 +106,7 @@ int log_send(struct bb_state *bb_data, struct file_state *file_state,
 			m = 1024;
 		ret = sendto(bb_data->log_fd, buf, m, 0, (struct sockaddr *)&(bb_data->log_addr), sizeof(struct sockaddr_in));
 		if (ret < 0) {
-			fprintf(stderr, "Error, send() failed: %m\n");
+			syslog(LOG_ERR, "Error, send() failed: %m");
 			//return 1;
 		}
 #endif
