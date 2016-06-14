@@ -90,18 +90,20 @@ int log_send(struct bb_state *bb_data, struct file_state *file_state,
 			strcpy(buf + n, off);
 		/* strncpy stops at end of b64 string, so it does not matter that chunk may point beyound b64 array */
 		strncpy(buf + n + l, b64 + i, chunk - l);
-#if 1
+#if 0
 		/* debugging, send length of base64 string instead of string */
 		char tmp[128];
 		int x = strlen(buf+n);
 		sprintf(tmp, "strlen %d, n: %d, tot: %d", x, n, x+n);
 		strcpy(buf + n, tmp);
-#endif
-#if 0
-		sendto(BB_DATA->log_fd, msg, len, 0, (struct sockaddr *)addr, sizeof(struct sockaddr_in));
-		if (n < 0) {
+#else
+		m = b64len - i + n + l;
+		if (m > 1024)
+			m = 1024;
+		ret = sendto(bb_data->log_fd, buf, m, 0, (struct sockaddr *)&(bb_data->log_addr), sizeof(struct sockaddr_in));
+		if (ret < 0) {
 			fprintf(stderr, "Error, send() failed: %m\n");
-			return 1;
+			//return 1;
 		}
 #endif
 		i += chunk - l;
