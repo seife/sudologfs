@@ -1,26 +1,26 @@
 /*
-  Big Brother File System
-  Copyright (C) 2012 Joseph J. Pfeiffer, Jr., Ph.D. <pfeiffer@cs.nmsu.edu>
+   Big Brother File System
+   Copyright (C) 2012 Joseph J. Pfeiffer, Jr., Ph.D. <pfeiffer@cs.nmsu.edu>
 
-  This program can be distributed under the terms of the GNU GPLv3.
-  See the file COPYING.
+   This program can be distributed under the terms of the GNU GPLv3.
+   See the file COPYING.
 
-  This code is derived from function prototypes found /usr/include/fuse/fuse.h
-  Copyright (C) 2001-2007  Miklos Szeredi <miklos@szeredi.hu>
-  His code is licensed under the LGPLv2.
-  A copy of that code is included in the file fuse.h
-  
-  The point of this FUSE filesystem is to provide an introduction to
-  FUSE.  It was my first FUSE filesystem as I got to know the
-  software; hopefully, the comments in this code will help people who
-  follow later to get a gentler introduction.
+   This code is derived from function prototypes found /usr/include/fuse/fuse.h
+   Copyright (C) 2001-2007  Miklos Szeredi <miklos@szeredi.hu>
+   His code is licensed under the LGPLv2.
+   A copy of that code is included in the file fuse.h
 
-  This might be called a no-op filesystem:  it doesn't impose
-  filesystem semantics on top of any other existing structure.  It
-  simply reports the requests that come in, and passes them to an
-  underlying filesystem.  The information is saved in a logfile named
-  bbfs.log, in the directory from which you run bbfs.
-*/
+   The point of this FUSE filesystem is to provide an introduction to
+   FUSE.  It was my first FUSE filesystem as I got to know the
+   software; hopefully, the comments in this code will help people who
+   follow later to get a gentler introduction.
+
+   This might be called a no-op filesystem:  it doesn't impose
+   filesystem semantics on top of any other existing structure.  It
+   simply reports the requests that come in, and passes them to an
+   underlying filesystem.  The information is saved in a logfile named
+   bbfs.log, in the directory from which you run bbfs.
+   */
 
 #include "config.h"
 
@@ -57,9 +57,9 @@
 //  it.
 static void bb_fullpath(char fpath[PATH_MAX], const char *path)
 {
-    strcpy(fpath, BB_DATA->rootdir);
-    strncat(fpath, path, PATH_MAX); // ridiculously long paths will
-				    // break here
+	strcpy(fpath, BB_DATA->rootdir);
+	strncat(fpath, path, PATH_MAX); // ridiculously long paths will
+	// break here
 }
 
 ///////////////////////////////////////////////////////////
@@ -75,14 +75,14 @@ static void bb_fullpath(char fpath[PATH_MAX], const char *path)
  */
 int bb_getattr(const char *path, struct stat *statbuf)
 {
-    int retstat;
-    char fpath[PATH_MAX];
-    CHECKPERM;
-    bb_fullpath(fpath, path);
+	int retstat;
+	char fpath[PATH_MAX];
+	CHECKPERM;
+	bb_fullpath(fpath, path);
 
-    retstat = lstat(fpath, statbuf);
-    
-    RETURN(retstat);
+	retstat = lstat(fpath, statbuf);
+
+	RETURN(retstat);
 }
 
 /** Read the target of a symbolic link
@@ -99,17 +99,17 @@ int bb_getattr(const char *path, struct stat *statbuf)
 // bb_readlink() code by Bernardo F Costa (thanks!)
 int bb_readlink(const char *path, char *link, size_t size)
 {
-    int retstat;
-    char fpath[PATH_MAX];
-    CHECKPERM;
+	int retstat;
+	char fpath[PATH_MAX];
+	CHECKPERM;
 
-    retstat = readlink(fpath, link, size - 1);
-    if (retstat >= 0) {
-	link[retstat] = '\0';
-	retstat = 0;
-    }
-    
-    RETURN(retstat);
+	retstat = readlink(fpath, link, size - 1);
+	if (retstat >= 0) {
+		link[retstat] = '\0';
+		retstat = 0;
+	}
+
+	RETURN(retstat);
 }
 
 /** Create a file node
@@ -120,54 +120,54 @@ int bb_readlink(const char *path, char *link, size_t size)
 // shouldn't that comment be "if" there is no.... ?
 int bb_mknod(const char *path, mode_t mode, dev_t dev)
 {
-    int retstat;
-    char fpath[PATH_MAX];
-    CHECKPERM;
-    bb_fullpath(fpath, path);
-    
-    // On Linux this could just be 'mknod(path, mode, dev)' but this
-    // tries to be be more portable by honoring the quote in the Linux
-    // mknod man page stating the only portable use of mknod() is to
-    // make a fifo, but saying it should never actually be used for
-    // that.
-    if (S_ISREG(mode)) {
-	retstat = open(fpath, O_CREAT | O_EXCL | O_WRONLY, mode);
-	if (retstat >= 0)
-	    retstat = close(retstat);
-    } else
-	if (S_ISFIFO(mode))
-	    retstat = mkfifo(fpath, mode);
-	else
-	    retstat = mknod(fpath, mode, dev);
-    
-    RETURN(retstat);
+	int retstat;
+	char fpath[PATH_MAX];
+	CHECKPERM;
+	bb_fullpath(fpath, path);
+
+	// On Linux this could just be 'mknod(path, mode, dev)' but this
+	// tries to be be more portable by honoring the quote in the Linux
+	// mknod man page stating the only portable use of mknod() is to
+	// make a fifo, but saying it should never actually be used for
+	// that.
+	if (S_ISREG(mode)) {
+		retstat = open(fpath, O_CREAT | O_EXCL | O_WRONLY, mode);
+		if (retstat >= 0)
+			retstat = close(retstat);
+	} else
+		if (S_ISFIFO(mode))
+			retstat = mkfifo(fpath, mode);
+		else
+			retstat = mknod(fpath, mode, dev);
+
+	RETURN(retstat);
 }
 
 /** Create a directory */
 int bb_mkdir(const char *path, mode_t mode)
 {
-    char fpath[PATH_MAX];
-    CHECKPERM;
-    bb_fullpath(fpath, path);
-    RETURN(mkdir(fpath, mode));
+	char fpath[PATH_MAX];
+	CHECKPERM;
+	bb_fullpath(fpath, path);
+	RETURN(mkdir(fpath, mode));
 }
 
 /** Remove a file */
 int bb_unlink(const char *path)
 {
-    char fpath[PATH_MAX];
-    CHECKPERM;
-    bb_fullpath(fpath, path);
-    RETURN(unlink(fpath));
+	char fpath[PATH_MAX];
+	CHECKPERM;
+	bb_fullpath(fpath, path);
+	RETURN(unlink(fpath));
 }
 
 /** Remove a directory */
 int bb_rmdir(const char *path)
 {
-    char fpath[PATH_MAX];
-    CHECKPERM;
-    bb_fullpath(fpath, path);
-    RETURN(rmdir(fpath));
+	char fpath[PATH_MAX];
+	CHECKPERM;
+	bb_fullpath(fpath, path);
+	RETURN(rmdir(fpath));
 }
 
 /** Create a symbolic link */
@@ -177,71 +177,71 @@ int bb_rmdir(const char *path)
 // unaltered, but insert the link into the mounted directory.
 int bb_symlink(const char *path, const char *link)
 {
-    char flink[PATH_MAX];
-    CHECKPERM;
-    bb_fullpath(flink, link);
-    RETURN(symlink(path, flink));
+	char flink[PATH_MAX];
+	CHECKPERM;
+	bb_fullpath(flink, link);
+	RETURN(symlink(path, flink));
 }
 
 /** Rename a file */
 // both path and newpath are fs-relative
 int bb_rename(const char *path, const char *newpath)
 {
-    char fpath[PATH_MAX];
-    char fnewpath[PATH_MAX];
-    CHECKPERM;
-    bb_fullpath(fpath, path);
-    bb_fullpath(fnewpath, newpath);
-    RETURN(rename(fpath, fnewpath));
+	char fpath[PATH_MAX];
+	char fnewpath[PATH_MAX];
+	CHECKPERM;
+	bb_fullpath(fpath, path);
+	bb_fullpath(fnewpath, newpath);
+	RETURN(rename(fpath, fnewpath));
 }
 
 /** Create a hard link to a file */
 int bb_link(const char *path, const char *newpath)
 {
-    char fpath[PATH_MAX], fnewpath[PATH_MAX];
-    CHECKPERM;
-    bb_fullpath(fpath, path);
-    bb_fullpath(fnewpath, newpath);
-    RETURN(link(fpath, fnewpath));
+	char fpath[PATH_MAX], fnewpath[PATH_MAX];
+	CHECKPERM;
+	bb_fullpath(fpath, path);
+	bb_fullpath(fnewpath, newpath);
+	RETURN(link(fpath, fnewpath));
 }
 
 /** Change the permission bits of a file */
 int bb_chmod(const char *path, mode_t mode)
 {
-    char fpath[PATH_MAX];
-    CHECKPERM;
-    bb_fullpath(fpath, path);
-    RETURN(chmod(fpath, mode));
+	char fpath[PATH_MAX];
+	CHECKPERM;
+	bb_fullpath(fpath, path);
+	RETURN(chmod(fpath, mode));
 }
 
 /** Change the owner and group of a file */
 int bb_chown(const char *path, uid_t uid, gid_t gid)
-  
+
 {
-    char fpath[PATH_MAX];
-    CHECKPERM;
-    bb_fullpath(fpath, path);
-    RETURN(chown(fpath, uid, gid));
+	char fpath[PATH_MAX];
+	CHECKPERM;
+	bb_fullpath(fpath, path);
+	RETURN(chown(fpath, uid, gid));
 }
 
 /** Change the size of a file */
 int bb_truncate(const char *path, off_t newsize)
 {
-    char fpath[PATH_MAX];
-    CHECKPERM;
-    bb_fullpath(fpath, path);
-    RETURN(truncate(fpath, newsize));
+	char fpath[PATH_MAX];
+	CHECKPERM;
+	bb_fullpath(fpath, path);
+	RETURN(truncate(fpath, newsize));
 }
 
 /** Change the access and/or modification times of a file */
 /* note -- I'll want to change this as soon as 2.6 is in debian testing */
 int bb_utime(const char *path, struct utimbuf *ubuf)
 {
-    char fpath[PATH_MAX];
-    CHECKPERM;
-    bb_fullpath(fpath, path);
+	char fpath[PATH_MAX];
+	CHECKPERM;
+	bb_fullpath(fpath, path);
 
-    RETURN(utime(fpath, ubuf));
+	RETURN(utime(fpath, ubuf));
 }
 
 /** File open operation
@@ -256,28 +256,28 @@ int bb_utime(const char *path, struct utimbuf *ubuf)
  */
 int bb_open(const char *path, struct fuse_file_info *fi)
 {
-    int retstat = 0;
-    int fd;
-    struct file_state *file_state;
-    char fpath[PATH_MAX];
-    CHECKPERM;
-    file_state = calloc(sizeof(struct file_state), 1);
-    if (!file_state)
-	return -ENOMEM;
+	int retstat = 0;
+	int fd;
+	struct file_state *file_state;
+	char fpath[PATH_MAX];
+	CHECKPERM;
+	file_state = calloc(sizeof(struct file_state), 1);
+	if (!file_state)
+		return -ENOMEM;
 
-    bb_fullpath(fpath, path);
+	bb_fullpath(fpath, path);
 
-    // if the open call succeeds, my retstat is the file descriptor,
-    // else it's -errno.  I'm making sure that in that case the saved
-    // file descriptor is exactly -1.
-    fd = open(fpath, fi->flags);
-    if (fd < 0)
-	retstat = -errno;
+	// if the open call succeeds, my retstat is the file descriptor,
+	// else it's -errno.  I'm making sure that in that case the saved
+	// file descriptor is exactly -1.
+	fd = open(fpath, fi->flags);
+	if (fd < 0)
+		retstat = -errno;
 
-    file_state->fd = fd;
-    fi->fh = (uint64_t)file_state;
+	file_state->fd = fd;
+	fi->fh = (uint64_t)file_state;
 
-    return retstat;
+	return retstat;
 }
 
 /** Read data from an open file
@@ -298,11 +298,11 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 // returned by read.
 int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
-    int retstat = 0;
-    CHECKPERM;
+	int retstat = 0;
+	CHECKPERM;
 
-    retstat = pread(FILE_STATE->fd, buf, size, offset);
-    RETURN(retstat);
+	retstat = pread(FILE_STATE->fd, buf, size, offset);
+	RETURN(retstat);
 }
 
 /** Write data to an open file
@@ -316,14 +316,14 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
 // As  with read(), the documentation above is inconsistent with the
 // documentation for the write() system call.
 int bb_write(const char *path, const char *buf, size_t size, off_t offset,
-	     struct fuse_file_info *fi)
+		struct fuse_file_info *fi)
 {
-    int retstat = 0;
-    CHECKPERM;
+	int retstat = 0;
+	CHECKPERM;
 
-    retstat = pwrite(FILE_STATE->fd, buf, size, offset);
-    log_send(BB_DATA, FILE_STATE, path, buf, size, offset);
-    RETURN(retstat);
+	retstat = pwrite(FILE_STATE->fd, buf, size, offset);
+	log_send(BB_DATA, FILE_STATE, path, buf, size, offset);
+	RETURN(retstat);
 }
 
 /** Get file system statistics
@@ -335,14 +335,14 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
  */
 int bb_statfs(const char *path, struct statvfs *statv)
 {
-    int retstat = 0;
-    char fpath[PATH_MAX];
-    CHECKPERM;
-    bb_fullpath(fpath, path);
-    
-    // get stats for underlying filesystem
-    retstat = statvfs(fpath, statv);
-    RETURN(retstat);
+	int retstat = 0;
+	char fpath[PATH_MAX];
+	CHECKPERM;
+	bb_fullpath(fpath, path);
+
+	// get stats for underlying filesystem
+	retstat = statvfs(fpath, statv);
+	RETURN(retstat);
 }
 
 /** Possibly flush cached data
@@ -371,8 +371,8 @@ int bb_statfs(const char *path, struct statvfs *statv)
 // this is a no-op in BBFS.  It just logs the call and returns success
 int bb_flush(const char *path, struct fuse_file_info *fi)
 {
-    // no need to get fpath on this one, since I work from fi->fh not the path
-    return 0;
+	// no need to get fpath on this one, since I work from fi->fh not the path
+	return 0;
 }
 
 /** Release an open file
@@ -391,11 +391,11 @@ int bb_flush(const char *path, struct fuse_file_info *fi)
  */
 int bb_release(const char *path, struct fuse_file_info *fi)
 {
-    // We need to close the file.  Had we allocated any resources
-    // (buffers etc) we'd need to free them here as well.
-    int ret = close(FILE_STATE->fd);
-    free(FILE_STATE);
-    RETURN(ret);
+	// We need to close the file.  Had we allocated any resources
+	// (buffers etc) we'd need to free them here as well.
+	int ret = close(FILE_STATE->fd);
+	free(FILE_STATE);
+	RETURN(ret);
 }
 
 /** Synchronize file contents
@@ -407,59 +407,59 @@ int bb_release(const char *path, struct fuse_file_info *fi)
  */
 int bb_fsync(const char *path, int datasync, struct fuse_file_info *fi)
 {
-    // some unix-like systems (notably freebsd) don't have a datasync call
-    CHECKPERM;
+	// some unix-like systems (notably freebsd) don't have a datasync call
+	CHECKPERM;
 #ifdef HAVE_FDATASYNC
-    if (datasync)
-	RETURN(fdatasync(FILE_STATE->fd));
-    else
+	if (datasync)
+		RETURN(fdatasync(FILE_STATE->fd));
+	else
 #endif	
-	RETURN(fsync(FILE_STATE->fd));
+		RETURN(fsync(FILE_STATE->fd));
 }
 
 #ifdef HAVE_SYS_XATTR_H
 /** Set extended attributes */
 int bb_setxattr(const char *path, const char *name, const char *value, size_t size, int flags)
 {
-    char fpath[PATH_MAX];
-    CHECKPERM;
-    bb_fullpath(fpath, path);
+	char fpath[PATH_MAX];
+	CHECKPERM;
+	bb_fullpath(fpath, path);
 
-    RETURN(lsetxattr(fpath, name, value, size, flags));
+	RETURN(lsetxattr(fpath, name, value, size, flags));
 }
 
 /** Get extended attributes */
 int bb_getxattr(const char *path, const char *name, char *value, size_t size)
 {
-    int retstat = 0;
-    char fpath[PATH_MAX];
-    CHECKPERM;
-    bb_fullpath(fpath, path);
+	int retstat = 0;
+	char fpath[PATH_MAX];
+	CHECKPERM;
+	bb_fullpath(fpath, path);
 
-    retstat = lgetxattr(fpath, name, value, size);
-    RETURN(retstat);
+	retstat = lgetxattr(fpath, name, value, size);
+	RETURN(retstat);
 }
 
 /** List extended attributes */
 int bb_listxattr(const char *path, char *list, size_t size)
 {
-    int retstat = 0;
-    char fpath[PATH_MAX];
-    CHECKPERM;
-    bb_fullpath(fpath, path);
+	int retstat = 0;
+	char fpath[PATH_MAX];
+	CHECKPERM;
+	bb_fullpath(fpath, path);
 
-    retstat = llistxattr(fpath, list, size);
-    RETURN(retstat);
+	retstat = llistxattr(fpath, list, size);
+	RETURN(retstat);
 }
 
 /** Remove extended attributes */
 int bb_removexattr(const char *path, const char *name)
 {
-    char fpath[PATH_MAX];
-    CHECKPERM;
-    bb_fullpath(fpath, path);
+	char fpath[PATH_MAX];
+	CHECKPERM;
+	bb_fullpath(fpath, path);
 
-    RETURN(lremovexattr(fpath, name));
+	RETURN(lremovexattr(fpath, name));
 }
 #endif
 
@@ -472,21 +472,21 @@ int bb_removexattr(const char *path, const char *name)
  */
 int bb_opendir(const char *path, struct fuse_file_info *fi)
 {
-    DIR *dp;
-    int retstat = 0;
-    char fpath[PATH_MAX];
-    CHECKPERM;
-    bb_fullpath(fpath, path);
+	DIR *dp;
+	int retstat = 0;
+	char fpath[PATH_MAX];
+	CHECKPERM;
+	bb_fullpath(fpath, path);
 
-    // since opendir returns a pointer, takes some custom handling of
-    // return status.
-    dp = opendir(fpath);
-    if (dp == NULL)
-	retstat = -errno;
-    
-    fi->fh = (intptr_t) dp;
-    
-    return retstat;
+	// since opendir returns a pointer, takes some custom handling of
+	// return status.
+	dp = opendir(fpath);
+	if (dp == NULL)
+		retstat = -errno;
+
+	fi->fh = (intptr_t) dp;
+
+	return retstat;
 }
 
 /** Read directory
@@ -512,36 +512,36 @@ int bb_opendir(const char *path, struct fuse_file_info *fi)
  */
 
 int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset,
-	       struct fuse_file_info *fi)
+		struct fuse_file_info *fi)
 {
-    int retstat = 0;
-    DIR *dp;
-    struct dirent *de;
-    CHECKPERM;
-    
-    // once again, no need for fullpath -- but note that I need to cast fi->fh
-    dp = (DIR *) (uintptr_t) fi->fh;
+	int retstat = 0;
+	DIR *dp;
+	struct dirent *de;
+	CHECKPERM;
 
-    // Every directory contains at least two entries: . and ..  If my
-    // first call to the system readdir() returns NULL I've got an
-    // error; near as I can tell, that's the only condition under
-    // which I can get an error from readdir()
-    de = readdir(dp);
-    if (de == 0) {
-	return -errno;
-    }
+	// once again, no need for fullpath -- but note that I need to cast fi->fh
+	dp = (DIR *) (uintptr_t) fi->fh;
 
-    // This will copy the entire directory into the buffer.  The loop exits
-    // when either the system readdir() returns NULL, or filler()
-    // returns something non-zero.  The first case just means I've
-    // read the whole directory; the second means the buffer is full.
-    do {
-	if (filler(buf, de->d_name, NULL, 0) != 0) {
-	    return -ENOMEM;
+	// Every directory contains at least two entries: . and ..  If my
+	// first call to the system readdir() returns NULL I've got an
+	// error; near as I can tell, that's the only condition under
+	// which I can get an error from readdir()
+	de = readdir(dp);
+	if (de == 0) {
+		return -errno;
 	}
-    } while ((de = readdir(dp)) != NULL);
-    
-    return retstat;
+
+	// This will copy the entire directory into the buffer.  The loop exits
+	// when either the system readdir() returns NULL, or filler()
+	// returns something non-zero.  The first case just means I've
+	// read the whole directory; the second means the buffer is full.
+	do {
+		if (filler(buf, de->d_name, NULL, 0) != 0) {
+			return -ENOMEM;
+		}
+	} while ((de = readdir(dp)) != NULL);
+
+	return retstat;
 }
 
 /** Release directory
@@ -550,9 +550,9 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
  */
 int bb_releasedir(const char *path, struct fuse_file_info *fi)
 {
-    int retstat = 0;
-    closedir((DIR *) (uintptr_t) fi->fh);
-    return retstat;
+	int retstat = 0;
+	closedir((DIR *) (uintptr_t) fi->fh);
+	return retstat;
 }
 
 /** Synchronize directory contents
@@ -566,8 +566,8 @@ int bb_releasedir(const char *path, struct fuse_file_info *fi)
 // happens to be a directory? ??? >>> I need to implement this...
 int bb_fsyncdir(const char *path, int datasync, struct fuse_file_info *fi)
 {
-    int retstat = 0;
-    return retstat;
+	int retstat = 0;
+	return retstat;
 }
 
 /**
@@ -589,7 +589,7 @@ int bb_fsyncdir(const char *path, int datasync, struct fuse_file_info *fi)
 // FUSE).
 void *bb_init(struct fuse_conn_info *conn)
 {
-    return BB_DATA;
+	return BB_DATA;
 }
 
 /**
@@ -616,13 +616,13 @@ void bb_destroy(void *userdata)
  */
 int bb_access(const char *path, int mask)
 {
-    int retstat = 0;
-    char fpath[PATH_MAX];
-    CHECKPERM;
-    bb_fullpath(fpath, path);
-    
-    retstat = access(fpath, mask);
-    RETURN(retstat);
+	int retstat = 0;
+	char fpath[PATH_MAX];
+	CHECKPERM;
+	bb_fullpath(fpath, path);
+
+	retstat = access(fpath, mask);
+	RETURN(retstat);
 }
 
 /**
@@ -654,10 +654,10 @@ int bb_access(const char *path, int mask)
  */
 int bb_ftruncate(const char *path, off_t offset, struct fuse_file_info *fi)
 {
-    int retstat = 0;
-    CHECKPERM;
-    retstat = ftruncate(FILE_STATE->fd, offset);
-    RETURN(retstat);
+	int retstat = 0;
+	CHECKPERM;
+	retstat = ftruncate(FILE_STATE->fd, offset);
+	RETURN(retstat);
 }
 
 /**
@@ -674,122 +674,122 @@ int bb_ftruncate(const char *path, off_t offset, struct fuse_file_info *fi)
  */
 int bb_fgetattr(const char *path, struct stat *statbuf, struct fuse_file_info *fi)
 {
-    int retstat = 0;
-    CHECKPERM;
-    // On FreeBSD, trying to do anything with the mountpoint ends up
-    // opening it, and then using the FD for an fgetattr.  So in the
-    // special case of a path of "/", I need to do a getattr on the
-    // underlying root directory instead of doing the fgetattr().
-    if (!strcmp(path, "/"))
-	return bb_getattr(path, statbuf);
-    
-    retstat = fstat(FILE_STATE->fd, statbuf);
-    RETURN(retstat);
+	int retstat = 0;
+	CHECKPERM;
+	// On FreeBSD, trying to do anything with the mountpoint ends up
+	// opening it, and then using the FD for an fgetattr.  So in the
+	// special case of a path of "/", I need to do a getattr on the
+	// underlying root directory instead of doing the fgetattr().
+	if (!strcmp(path, "/"))
+		return bb_getattr(path, statbuf);
+
+	retstat = fstat(FILE_STATE->fd, statbuf);
+	RETURN(retstat);
 }
 
 struct fuse_operations bb_oper = {
-  .getattr = bb_getattr,
-  .readlink = bb_readlink,
-  // no .getdir -- that's deprecated
-  .getdir = NULL,
-  .mknod = bb_mknod,
-  .mkdir = bb_mkdir,
-  .unlink = bb_unlink,
-  .rmdir = bb_rmdir,
-  .symlink = bb_symlink,
-  .rename = bb_rename,
-  .link = bb_link,
-  .chmod = bb_chmod,
-  .chown = bb_chown,
-  .truncate = bb_truncate,
-  .utime = bb_utime,
-  .open = bb_open,
-  .read = bb_read,
-  .write = bb_write,
-  /** Just a placeholder, don't set */ // huh???
-  .statfs = bb_statfs,
-  .flush = bb_flush,
-  .release = bb_release,
-  .fsync = bb_fsync,
-  
+	.getattr = bb_getattr,
+	.readlink = bb_readlink,
+	// no .getdir -- that's deprecated
+	.getdir = NULL,
+	.mknod = bb_mknod,
+	.mkdir = bb_mkdir,
+	.unlink = bb_unlink,
+	.rmdir = bb_rmdir,
+	.symlink = bb_symlink,
+	.rename = bb_rename,
+	.link = bb_link,
+	.chmod = bb_chmod,
+	.chown = bb_chown,
+	.truncate = bb_truncate,
+	.utime = bb_utime,
+	.open = bb_open,
+	.read = bb_read,
+	.write = bb_write,
+	/** Just a placeholder, don't set */ // huh???
+	.statfs = bb_statfs,
+	.flush = bb_flush,
+	.release = bb_release,
+	.fsync = bb_fsync,
+
 #ifdef HAVE_SYS_XATTR_H
-  .setxattr = bb_setxattr,
-  .getxattr = bb_getxattr,
-  .listxattr = bb_listxattr,
-  .removexattr = bb_removexattr,
+	.setxattr = bb_setxattr,
+	.getxattr = bb_getxattr,
+	.listxattr = bb_listxattr,
+	.removexattr = bb_removexattr,
 #endif
-  
-  .opendir = bb_opendir,
-  .readdir = bb_readdir,
-  .releasedir = bb_releasedir,
-  .fsyncdir = bb_fsyncdir,
-  .init = bb_init,
-  .destroy = bb_destroy,
-  .access = bb_access,
-  .ftruncate = bb_ftruncate,
-  .fgetattr = bb_fgetattr
+
+	.opendir = bb_opendir,
+	.readdir = bb_readdir,
+	.releasedir = bb_releasedir,
+	.fsyncdir = bb_fsyncdir,
+	.init = bb_init,
+	.destroy = bb_destroy,
+	.access = bb_access,
+	.ftruncate = bb_ftruncate,
+	.fgetattr = bb_fgetattr
 };
 
 void bb_usage()
 {
-    fprintf(stderr, "usage:  bbfs [FUSE and mount options] rootDir mountPoint\n");
-    abort();
+	fprintf(stderr, "usage:  bbfs [FUSE and mount options] rootDir mountPoint\n");
+	abort();
 }
 
 int main(int argc, char *argv[])
 {
-    int fuse_stat;
-    struct bb_state *bb_data;
+	int fuse_stat;
+	struct bb_state *bb_data;
 
 #if 0
-    // bbfs doesn't do any access checking on its own (the comment
-    // blocks in fuse.h mention some of the functions that need
-    // accesses checked -- but note there are other functions, like
-    // chown(), that also need checking!).  Since running bbfs as root
-    // will therefore open Metrodome-sized holes in the system
-    // security, we'll check if root is trying to mount the filesystem
-    // and refuse if it is.  The somewhat smaller hole of an ordinary
-    // user doing it with the allow_other flag is still there because
-    // I don't want to parse the options string.
-    if ((getuid() == 0) || (geteuid() == 0)) {
-	fprintf(stderr, "Running BBFS as root opens unnacceptable security holes\n");
-	return 1;
-    }
+	// bbfs doesn't do any access checking on its own (the comment
+	// blocks in fuse.h mention some of the functions that need
+	// accesses checked -- but note there are other functions, like
+	// chown(), that also need checking!).  Since running bbfs as root
+	// will therefore open Metrodome-sized holes in the system
+	// security, we'll check if root is trying to mount the filesystem
+	// and refuse if it is.  The somewhat smaller hole of an ordinary
+	// user doing it with the allow_other flag is still there because
+	// I don't want to parse the options string.
+	if ((getuid() == 0) || (geteuid() == 0)) {
+		fprintf(stderr, "Running BBFS as root opens unnacceptable security holes\n");
+		return 1;
+	}
 #endif
 
-    // See which version of fuse we're running
-    fprintf(stderr, "Fuse library version %d.%d\n", FUSE_MAJOR_VERSION, FUSE_MINOR_VERSION);
-    
-    // Perform some sanity checking on the command line:  make sure
-    // there are enough arguments, and that neither of the last two
-    // start with a hyphen (this will break if you actually have a
-    // rootpoint or mountpoint whose name starts with a hyphen, but so
-    // will a zillion other programs)
-    if ((argc < 3) || (argv[argc-2][0] == '-') || (argv[argc-1][0] == '-'))
-	bb_usage();
+	// See which version of fuse we're running
+	fprintf(stderr, "Fuse library version %d.%d\n", FUSE_MAJOR_VERSION, FUSE_MINOR_VERSION);
 
-    bb_data = malloc(sizeof(struct bb_state));
-    if (bb_data == NULL) {
-	perror("main calloc");
-	abort();
-    }
+	// Perform some sanity checking on the command line:  make sure
+	// there are enough arguments, and that neither of the last two
+	// start with a hyphen (this will break if you actually have a
+	// rootpoint or mountpoint whose name starts with a hyphen, but so
+	// will a zillion other programs)
+	if ((argc < 3) || (argv[argc-2][0] == '-') || (argv[argc-1][0] == '-'))
+		bb_usage();
 
-    // Pull the rootdir out of the argument list and save it in my
-    // internal data
-    bb_data->rootdir = realpath(argv[argc-2], NULL);
+	bb_data = malloc(sizeof(struct bb_state));
+	if (bb_data == NULL) {
+		perror("main calloc");
+		abort();
+	}
+
+	// Pull the rootdir out of the argument list and save it in my
+	// internal data
+	bb_data->rootdir = realpath(argv[argc-2], NULL);
 #if 0
-    argv[argc-2] = argv[argc-1];
-    argv[argc-1] = NULL;
-    argc--;
+	argv[argc-2] = argv[argc-1];
+	argv[argc-1] = NULL;
+	argc--;
 #else
-    /* ugly hack :-) */
-    argv[argc-2] = "-oallow_other";
+	/* ugly hack :-) */
+	argv[argc-2] = "-oallow_other";
 #endif
-    bb_data->log_fd = log_open("localhost", &bb_data->log_addr);
-    // turn over control to fuse
-    fprintf(stderr, "about to call fuse_main\n");
-    fuse_stat = fuse_main(argc, argv, &bb_oper, bb_data);
-    fprintf(stderr, "fuse_main returned %d\n", fuse_stat);
-    
-    return fuse_stat;
+	bb_data->log_fd = log_open("localhost", &bb_data->log_addr);
+	// turn over control to fuse
+	fprintf(stderr, "about to call fuse_main\n");
+	fuse_stat = fuse_main(argc, argv, &bb_oper, bb_data);
+	fprintf(stderr, "fuse_main returned %d\n", fuse_stat);
+
+	return fuse_stat;
 }
