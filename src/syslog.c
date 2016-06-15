@@ -15,6 +15,18 @@
 #include "cencode.h"
 #include "params.h"
 
+/* configurable stuff here */
+/*
+ * syslog RFC says, that 1024 is the maximum size of a log message.
+ * UDP transport probably prohibits anything beyond MTU (1500) anyway
+ */
+#define LOG_PACKET_LENGTH 1024
+/*
+ *the minimum "payload size" we want in the syslog packet, after the
+ * header, filename, ...
+ */
+#define MIN_BUF_SPACE 128
+
 int log_open(char *hostname, struct sockaddr_in *addr)
 {
 	struct hostent *srv;
@@ -43,7 +55,7 @@ int log_send(struct bb_state *bb_data, struct file_state *file_state,
 	     const char *filename, const char *msg, int len, off_t offset)
 {
 	static char hn[512] = "\0";
-	char buf[1024];
+	char buf[LOG_PACKET_LENGTH];
 	char off[64];
 	int i, l, m, n, chunk, ret;
 	int prio = 13 * 8 + 5; /* log_audit.log_notice, 109 */
@@ -77,11 +89,11 @@ int log_send(struct bb_state *bb_data, struct file_state *file_state,
 	if (!hn[0])
 		strcpy(hn, inet_ntoa(bb_data->log_addr.sin_addr));
 	n = sprintf(buf, "<%d>", prio);
-	n += strftime(buf + n, 1024-n, "%b %e %T ", &tm);
-	strncat(buf + n, hn, 1024-n);
+	n += strftime(buf + n, LOG_PACKET_LENGTH - n, "%b %e %T ", &tm);
+	strncat(buf + n, hn, LOG_PACKET_LENGTH - n);
 	n += strlen(hn);
-	m = snprintf(buf + n, 1024-n, " %s:%08x ", filename, 0);
-	if (m >= 1024-n) {
+	m = snprintf(buf + n, LOG_PACKET_LENGTH - n, " %s:%08x ", filename, 0);
+	if (m >= LOG_PACKET_LENGTH - n) {
 		syslog(LOG_ERR, "filename too long, not sending log message");
 		syslog(LOG_ERR, "%s", filename);
 		free(b64);
@@ -92,8 +104,10 @@ int log_send(struct bb_state *bb_data, struct file_state *file_state,
 	/* "size@offset " */
 	l = sprintf(off, "%x@%" PRIx64 " ", len, offset);
 
-	chunk = 1023 - n;
-	if (chunk < 128) {
+	chunk = LOG_PACKET_LENGTH - 1 - n;
+	if (chunk < MIN_BUF_SPACE) {
+		/* we assume that MIN_BUF_SPACE is much bigger than l (strlen "size@offset")
+		 * here, so no extra check for l is made */
 		syslog(LOG_ERR, "not enough space in packet (%d), not sending log message", chunk);
 		syslog(LOG_ERR, "%s", filename);
 		free(b64);
@@ -115,8 +129,8 @@ int log_send(struct bb_state *bb_data, struct file_state *file_state,
 		strcpy(buf + n, tmp);
 #else
 		m = b64len - i + n + l;
-		if (m > 1024)
-			m = 1024;
+		if (m > LOG_PACKET_LENGTH)
+			m = LOG_PACKET_LENGTH;
 		ret = sendto(bb_data->log_fd, buf, m, 0, (struct sockaddr *)&(bb_data->log_addr), sizeof(struct sockaddr_in));
 		if (ret < 0) {
 			syslog(LOG_ERR, "Error, send() failed: %m");
