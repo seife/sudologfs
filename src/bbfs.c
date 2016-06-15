@@ -53,6 +53,9 @@
 /* primitive access control option, as we need to mount with "allow other" */
 #define CHECKPERM do { if (fuse_get_context()->uid) return -EACCES; } while(0)
 
+/* helper macro to avoid "unused parameter" warnings from gcc */
+#  define UNUSED(x) UNUSED_ ## x __attribute__((__unused__))
+
 //  All the paths I see are relative to the root of the mounted
 //  filesystem.  In order to get to the underlying filesystem, I need to
 //  have the mountpoint.  I'll save it away early on in main(), and then
@@ -100,7 +103,7 @@ int bb_getattr(const char *path, struct stat *statbuf)
 // null.  So, the size passed to to the system readlink() must be one
 // less than the size passed to bb_readlink()
 // bb_readlink() code by Bernardo F Costa (thanks!)
-int bb_readlink(const char *path, char *link, size_t size)
+int bb_readlink(const char *UNUSED(path), char *link, size_t size)
 {
 	int retstat;
 	char fpath[PATH_MAX];
@@ -299,7 +302,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 // can return with anything up to the amount of data requested. nor
 // with the fusexmp code which returns the amount of data also
 // returned by read.
-int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
+int bb_read(const char *UNUSED(path), char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
 	int retstat = 0;
 	CHECKPERM;
@@ -372,7 +375,7 @@ int bb_statfs(const char *path, struct statvfs *statv)
  * Changed in version 2.2
  */
 // this is a no-op in BBFS.  It just logs the call and returns success
-int bb_flush(const char *path, struct fuse_file_info *fi)
+int bb_flush(const char *UNUSED(path), struct fuse_file_info *UNUSED(fi))
 {
 	// no need to get fpath on this one, since I work from fi->fh not the path
 	return 0;
@@ -392,7 +395,7 @@ int bb_flush(const char *path, struct fuse_file_info *fi)
  *
  * Changed in version 2.2
  */
-int bb_release(const char *path, struct fuse_file_info *fi)
+int bb_release(const char *UNUSED(path), struct fuse_file_info *fi)
 {
 	// We need to close the file.  Had we allocated any resources
 	// (buffers etc) we'd need to free them here as well.
@@ -408,7 +411,7 @@ int bb_release(const char *path, struct fuse_file_info *fi)
  *
  * Changed in version 2.2
  */
-int bb_fsync(const char *path, int datasync, struct fuse_file_info *fi)
+int bb_fsync(const char *UNUSED(path), int datasync, struct fuse_file_info *fi)
 {
 	// some unix-like systems (notably freebsd) don't have a datasync call
 	CHECKPERM;
@@ -514,7 +517,7 @@ int bb_opendir(const char *path, struct fuse_file_info *fi)
  * Introduced in version 2.3
  */
 
-int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset,
+int bb_readdir(const char *UNUSED(path), void *buf, fuse_fill_dir_t filler, off_t UNUSED(offset),
 		struct fuse_file_info *fi)
 {
 	int retstat = 0;
@@ -551,7 +554,7 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
  *
  * Introduced in version 2.3
  */
-int bb_releasedir(const char *path, struct fuse_file_info *fi)
+int bb_releasedir(const char *UNUSED(path), struct fuse_file_info *fi)
 {
 	int retstat = 0;
 	closedir((DIR *) (uintptr_t) fi->fh);
@@ -567,7 +570,7 @@ int bb_releasedir(const char *path, struct fuse_file_info *fi)
  */
 // when exactly is this called?  when a user calls fsync and it
 // happens to be a directory? ??? >>> I need to implement this...
-int bb_fsyncdir(const char *path, int datasync, struct fuse_file_info *fi)
+int bb_fsyncdir(const char *UNUSED(path), int UNUSED(datasync), struct fuse_file_info *UNUSED(fi))
 {
 	int retstat = 0;
 	return retstat;
@@ -590,7 +593,7 @@ int bb_fsyncdir(const char *path, int datasync, struct fuse_file_info *fi)
 // parameter coming in here, or else the fact should be documented
 // (and this might as well return void, as it did in older versions of
 // FUSE).
-void *bb_init(struct fuse_conn_info *conn)
+void *bb_init(struct fuse_conn_info *UNUSED(conn))
 {
 	return BB_DATA;
 }
@@ -659,7 +662,7 @@ int bb_access(const char *path, int mask)
  *
  * Introduced in version 2.5
  */
-int bb_ftruncate(const char *path, off_t offset, struct fuse_file_info *fi)
+int bb_ftruncate(const char *UNUSED(path), off_t offset, struct fuse_file_info *fi)
 {
 	int retstat = 0;
 	CHECKPERM;
