@@ -3,7 +3,7 @@
 
 AC_PREREQ([2.69])
 AC_INIT([sudologfs], [0.42], [seife@tuxbox-git.slipkontur.de])
-AM_INIT_AUTOMAKE
+AM_INIT_AUTOMAKE([foreign])
 AC_CONFIG_SRCDIR([src/bbfs.c])
 AC_CONFIG_HEADERS([src/config.h])
 

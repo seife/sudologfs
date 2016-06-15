@@ -1006,12 +1006,12 @@ initialize ( ) {
     ##########################################
     # make sure certain required files exist #
     ##########################################
-    for file in AUTHORS COPYING ChangeLog INSTALL NEWS README ; do
-	if test ! -f $file ; then
-	    $VERBOSE_ECHO "Touching ${file} since it does not exist"
-	    touch $file
-	fi
-    done
+#    for file in AUTHORS COPYING ChangeLog INSTALL NEWS README ; do
+#	if test ! -f $file ; then
+#	    $VERBOSE_ECHO "Touching ${file} since it does not exist"
+#	    touch $file
+#	fi
+#    done
 
     ##################################################
     # make sure certain generated files do not exist #
