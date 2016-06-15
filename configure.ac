@@ -32,6 +32,7 @@ AC_FUNC_CHOWN
 AC_FUNC_LSTAT_FOLLOWS_SLASHED_SYMLINK
 AC_FUNC_MALLOC
 AC_CHECK_FUNCS([ftruncate mkdir mkfifo realpath rmdir strerror utime])
+AC_DEFINE([_XOPEN_SOURCE], [500], [needed for pwrite/pread])
 
 # Not all systems that support FUSE also support fdatasync (notably freebsd)
 AC_CHECK_FUNCS([fdatasync])
