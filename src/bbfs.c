@@ -64,7 +64,7 @@
 static void bb_fullpath(char fpath[PATH_MAX], const char *path)
 {
 	strcpy(fpath, BB_DATA->rootdir);
-	strncat(fpath, path, PATH_MAX); // ridiculously long paths will
+	strncat(fpath, path, PATH_MAX - strlen(fpath) -1 ); // ridiculously long paths will
 	// break here
 }
 
