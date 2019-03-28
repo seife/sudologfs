@@ -86,7 +86,8 @@ int log_send(struct bb_state *bb_data, struct file_state *file_state,
 	b64len += n;
 	// fprintf(stderr, "b64: '%s'\n", b64);
 
-	if (!hn[0])
+	ret = gethostname(hn, 512);
+	if (ret < 0)
 		strcpy(hn, inet_ntoa(bb_data->log_addr.sin_addr));
 	n = sprintf(buf, "<%d>", prio);
 	n += strftime(buf + n, LOG_PACKET_LENGTH - n, "%b %e %T ", &tm);
