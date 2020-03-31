@@ -20,7 +20,7 @@ The sequence number is increased with each transmitted packet to allow reconstru
 Build with standard "./configure;make;sudo make install", when building from git use ./autogen.sh before.  
 Mount the file system:
 
-    sudologfs /var/log/sudo-backing /var/log/sudo-io my-loghost.mydomain.tld
+    sudologfs /var/log/sudo-backing /var/log/sudo-io my-loghost.mydomain.tld[:port]
 
 On the receiving machine ("my-loghost.mydomain.tld"), the syslog needs to be configured to receive sudologfs' UDP messages, and (optionally) filter them out to a separate file.  
 Example for rsyslogd, put this into /etc/rsyslog.d/sudologfs-receiver.conf
