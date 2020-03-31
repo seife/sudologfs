@@ -742,7 +742,7 @@ struct fuse_operations bb_oper = {
 
 void bb_usage()
 {
-	fprintf(stderr, "usage:  bbfs [FUSE and mount options] rootDir mountPoint loghost\n");
+	fprintf(stderr, "usage:  bbfs [FUSE and mount options] rootDir mountPoint loghost[:port]\n");
 	abort();
 }
 
@@ -750,6 +750,7 @@ int main(int argc, char *argv[])
 {
 	int fuse_stat;
 	struct bb_state *bb_data;
+	char *logspec;
 
 	// See which version of fuse we're running
 	fprintf(stderr, "Fuse library version %d.%d\n", FUSE_MAJOR_VERSION, FUSE_MINOR_VERSION);
@@ -768,23 +769,26 @@ int main(int argc, char *argv[])
 		abort();
 	}
 
+	logspec = strdup(argv[argc-1]);
+
 	// Pull the rootdir out of the argument list and save it in my
 	// internal data
 	/* realpath malloc()'s the space, so free it in destroy() */
 	bb_data->rootdir = realpath(argv[argc-3], NULL);
 	bb_data->log_fd = log_open(argv[argc-1], &bb_data->log_addr);
 	if (bb_data->log_fd < 0) {
-		fprintf(stderr, "Resolving '%s' failed, this is a fatal error.\n", argv[argc-1]);
+		fprintf(stderr, "Parsing logspec '%s' failed, this is a fatal error.\n", logspec);
 		free(bb_data->rootdir);
 		free(bb_data);
 		return 1;
 	}
 	/* ugly hack :-) */
 	argv[argc-3] = "-oallow_other";
-	syslog(LOG_NOTICE, "mounting %s to %s, logging to %s", bb_data->rootdir, argv[argc-2], argv[argc-1]);
+	syslog(LOG_NOTICE, "mounting %s to %s, logging to %s", bb_data->rootdir, argv[argc-2], logspec);
 	/* remove loghost parameter */
 	argv[argc-1] = NULL;
 	argc--;
+	free(logspec);
 	// turn over control to fuse
 	fuse_stat = fuse_main(argc, argv, &bb_oper, bb_data);
 	syslog(LOG_NOTICE, "exiting with %d", fuse_stat);
