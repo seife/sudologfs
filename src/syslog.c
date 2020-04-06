@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <syslog.h>
 #include <stdlib.h>	/* malloc */
+#include <limits.h>
 #include <time.h>	/* strftime */
 #include <inttypes.h>	/* PRIx64 */
 #include "cencode.h"
@@ -27,10 +28,46 @@
  */
 #define MIN_BUF_SPACE 128
 
+static uint16_t strtouint16(const char* nptr, char** endptr, int base)
+{
+	errno = 0;
+	long val = strtol(nptr, endptr, 10);
+	if (endptr && **endptr != '\0') {
+		/* garbage in the string */
+		errno = EINVAL;
+		return 0;
+	}
+	if (errno || (endptr && *endptr == nptr)) {
+		return 0;
+	}
+	if (val < 0 || val > UINT16_MAX) {
+		errno = ERANGE;
+		return 0;
+	}
+	return (uint16_t)val;
+}
+
 int log_open(char *hostname, struct sockaddr_in *addr)
 {
 	struct hostent *srv;
 	int sock;
+	uint16_t port = 514;
+	char *portstr;
+	char *endptr;
+
+	portstr = strrchr(hostname, ':');
+	if (portstr) {
+		*portstr = '\0';
+		portstr = portstr+1;
+		port = strtouint16(portstr, &endptr, 10);
+		if (errno) {
+			fprintf(stderr, "invalid port number: ");
+			perror(NULL);
+			syslog(LOG_ERR, "invalid port number: %m");
+			return -1;
+		}
+	}
+
 	openlog(NULL, LOG_PERROR|LOG_PID, LOG_DAEMON);
 	sock = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sock < 0) {
@@ -45,7 +82,7 @@ int log_open(char *hostname, struct sockaddr_in *addr)
 	}
 	memset(addr, 0, sizeof(struct sockaddr_in));
 	addr->sin_family = AF_INET;
-	addr->sin_port = htons(514);
+	addr->sin_port = htons(port);
 	memcpy(&addr->sin_addr.s_addr, srv->h_addr_list[0], srv->h_length);
 
 	return sock;

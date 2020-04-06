@@ -11,7 +11,7 @@ AC_CONFIG_HEADERS([src/config.h])
 AC_PROG_CC
 
 # Checks for header files.
-AC_CHECK_HEADERS([fcntl.h limits.h stdlib.h string.h sys/statvfs.h unistd.h utime.h sys/xattr.h])
+AC_CHECK_HEADERS([fcntl.h limits.h stdlib.h string.h sys/statvfs.h unistd.h utime.h sys/xattr.h netinet/in.h])
 
 # Check for FUSE development environment
 PKG_CHECK_MODULES(FUSE, fuse)
@@ -32,7 +32,7 @@ AC_FUNC_CHOWN
 AC_FUNC_LSTAT_FOLLOWS_SLASHED_SYMLINK
 AC_FUNC_MALLOC
 AC_CHECK_FUNCS([ftruncate mkdir mkfifo realpath rmdir strerror utime])
-AC_DEFINE([_XOPEN_SOURCE], [500], [needed for pwrite/pread])
+AC_DEFINE([_XOPEN_SOURCE], [600], [needed for pwrite/pread/lstat])
 
 # Not all systems that support FUSE also support fdatasync (notably freebsd)
 AC_CHECK_FUNCS([fdatasync])
