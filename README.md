@@ -20,7 +20,7 @@ The sequence number is increased with each transmitted packet to allow reconstru
 Build with standard "./configure;make;sudo make install", when building from git use ./autogen.sh before.  
 Mount the file system:
 
-    sudologfs /var/log/sudo-backing /var/log/sudo-io my-loghost.mydomain.tld
+    sudologfs /var/log/sudo-backing /var/log/sudo-io my-loghost.mydomain.tld[:port]
 
 On the receiving machine ("my-loghost.mydomain.tld"), the syslog needs to be configured to receive sudologfs' UDP messages, and (optionally) filter them out to a separate file.  
 Example for rsyslogd, put this into /etc/rsyslog.d/sudologfs-receiver.conf
@@ -31,6 +31,10 @@ Example for rsyslogd, put this into /etc/rsyslog.d/sudologfs-receiver.conf
     if $syslogfacility == 13 then {
         ?SudologFile
     }
+
+## Example fstab
+
+    /var/log/sudo-backing /var/log/sudo-io  fusefs.sudologfs   rw,mountprog=/usr/local/bin/sudologfs,syslog=192.0.2.10:514
 
 ## Limitations
   * Long file names will not work (the filename/sequence number prefix will use all the space in the syslog packet)  

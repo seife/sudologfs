@@ -19,8 +19,14 @@
 // maintain bbfs state in here
 #include <limits.h>
 #include <stdio.h>
+#ifdef HAVE_NETINET_IN_H
+#  include <netinet/in.h>
+#endif
 struct bb_state {
 	char *rootdir;
+	char *mountpoint;
+	char *logspec;
+	char *hostname;
 	struct sockaddr_in log_addr;
 	int log_fd;
 };

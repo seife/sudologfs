@@ -36,12 +36,17 @@
 #include <fuse.h>
 #include <libgen.h>
 #include <limits.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <syslog.h>
+
+#ifdef HAVE_SYS_STAT_H
+#include <sys/stat.h>
+#endif
 
 #ifdef HAVE_SYS_XATTR_H
 #include <sys/xattr.h>
@@ -742,51 +747,107 @@ struct fuse_operations bb_oper = {
 
 void bb_usage()
 {
-	fprintf(stderr, "usage:  bbfs [FUSE and mount options] rootDir mountPoint loghost\n");
-	abort();
+	fprintf(stderr,
+		"usage:  sudologfs rootDir mountPoint [options]\n"
+		" (or sudologfs rootDir mountPoint loghost[:port] for backwards compat)\n"
+		"\n"
+		"    -o syslog=loghost[:port]	set syslog destination\n"
+		"    -o hostname=hostname	set source hostname in the syslog message\n"
+		);
 }
+
+static int sudologfs_opt_proc(void *bb_state, const char *arg, int key,
+                          struct fuse_args *outargs)
+{
+	(void) outargs;
+	struct bb_state *state = (struct bb_state *) bb_state;
+
+	switch (key) {
+	case FUSE_OPT_KEY_OPT:
+		/* Pass through */
+		return 1;
+
+	case FUSE_OPT_KEY_NONOPT:
+		// first non-option: rootdir, we'll keep that
+		if (!state->rootdir) {
+			state->rootdir = realpath(arg, NULL);
+			if (state->rootdir) {
+				return 0;
+			} else {
+				fprintf(stderr, "rootdir did not resolve to path");
+				return -1;
+			}
+		}
+		// second non-option: mountpoint, pass on to libfuse
+		else if (!state->mountpoint) {
+			state->mountpoint = strdup(arg);
+			return 1;
+		}
+		// third non-option, only with manual non-fstab mounts: logspec, we'll keep that
+		else if (!state->logspec) {
+			state->logspec = strdup(arg);
+			return 0;
+		}
+
+		fprintf(stderr, "sudologfs: invalid argument `%s'\n", arg);
+		return -1;
+
+	default:
+		fprintf(stderr, "internal option parsing error\n");
+		abort();
+	}
+}
+
+#define SUDOLOGFS_OPT(t, p, v) { t, offsetof(struct bb_state, p), v }
+
+static struct fuse_opt sudologfs_opts[] = {
+	SUDOLOGFS_OPT("syslog=%s", logspec, 0),
+	SUDOLOGFS_OPT("hostname=%s", hostname, 0),
+
+	FUSE_OPT_END
+};
 
 int main(int argc, char *argv[])
 {
 	int fuse_stat;
 	struct bb_state *bb_data;
+	char *logspec;
+	struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
 
 	// See which version of fuse we're running
 	fprintf(stderr, "Fuse library version %d.%d\n", FUSE_MAJOR_VERSION, FUSE_MINOR_VERSION);
 
-	// Perform some sanity checking on the command line:  make sure
-	// there are enough arguments, and that neither of the last three
-	// start with a hyphen (this will break if you actually have a
-	// rootpoint or mountpoint whose name starts with a hyphen, but so
-	// will a zillion other programs)
-	if ((argc < 4) || (argv[argc-3][0] == '-') || (argv[argc-2][0] == '-') || (argv[argc-1][0] == '-'))
-		bb_usage();
-
-	bb_data = malloc(sizeof(struct bb_state));
+	bb_data = calloc(1, sizeof(struct bb_state));
 	if (bb_data == NULL) {
 		perror("main calloc");
 		abort();
 	}
 
-	// Pull the rootdir out of the argument list and save it in my
-	// internal data
-	/* realpath malloc()'s the space, so free it in destroy() */
-	bb_data->rootdir = realpath(argv[argc-3], NULL);
-	bb_data->log_fd = log_open(argv[argc-1], &bb_data->log_addr);
+	if (fuse_opt_parse(&args, bb_data, sudologfs_opts, sudologfs_opt_proc) == -1)
+	{
+		bb_usage();
+		exit(1);
+	}
+	fuse_opt_add_arg(&args, "-oallow_other");
+
+	if (!(bb_data->rootdir && bb_data->mountpoint && bb_data->logspec)) {
+		fprintf(stderr, "too few arguments\n");
+		bb_usage();
+		exit(1);
+	}
+
+	bb_data->log_fd = log_open(bb_data);
 	if (bb_data->log_fd < 0) {
-		fprintf(stderr, "Resolving '%s' failed, this is a fatal error.\n", argv[argc-1]);
+		fprintf(stderr, "Parsing logspec '%s' failed, this is a fatal error.\n", bb_data->logspec);
 		free(bb_data->rootdir);
 		free(bb_data);
 		return 1;
 	}
-	/* ugly hack :-) */
-	argv[argc-3] = "-oallow_other";
-	syslog(LOG_NOTICE, "mounting %s to %s, logging to %s", bb_data->rootdir, argv[argc-2], argv[argc-1]);
-	/* remove loghost parameter */
-	argv[argc-1] = NULL;
-	argc--;
+
+	syslog(LOG_NOTICE, "mounting %s to %s, logging to %s for hostname %s", bb_data->rootdir, bb_data->mountpoint, bb_data->logspec, bb_data->hostname);
+
 	// turn over control to fuse
-	fuse_stat = fuse_main(argc, argv, &bb_oper, bb_data);
+	fuse_stat = fuse_main(args.argc, args.argv, &bb_oper, bb_data);
 	syslog(LOG_NOTICE, "exiting with %d", fuse_stat);
 	closelog();
 
