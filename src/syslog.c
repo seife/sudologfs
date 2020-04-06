@@ -47,15 +47,17 @@ static uint16_t strtouint16(const char* nptr, char** endptr, int base)
 	return (uint16_t)val;
 }
 
-int log_open(char *hostname, struct sockaddr_in *addr)
+int log_open(struct bb_state *bb_data /* char *hostname, struct sockaddr_in *addr */)
 {
 	struct hostent *srv;
 	int sock;
 	uint16_t port = 514;
 	char *portstr;
 	char *endptr;
+	char *logspec = strdup(bb_data->logspec);
+	struct sockaddr_in *addr = &bb_data->log_addr;
 
-	portstr = strrchr(hostname, ':');
+	portstr = strrchr(logspec, ':');
 	if (portstr) {
 		*portstr = '\0';
 		portstr = portstr+1;
@@ -72,12 +74,14 @@ int log_open(char *hostname, struct sockaddr_in *addr)
 	sock = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sock < 0) {
 		syslog(LOG_ERR, "socket: %m");
+		free(logspec);
 		return sock;
 	}
 	/* gethostbyname(3): "Here name is either a hostname or an IPv4 address in standard dot notation" */
-	srv = gethostbyname(hostname);
+	srv = gethostbyname(logspec);
 	if (!srv) {
-		syslog(LOG_ERR, "gethostbyname(%s): %s", hostname, strerror(h_errno));
+		syslog(LOG_ERR, "gethostbyname(%s): %s", logspec, strerror(h_errno));
+		free(logspec);
 		return -1;
 	}
 	memset(addr, 0, sizeof(struct sockaddr_in));
@@ -85,13 +89,25 @@ int log_open(char *hostname, struct sockaddr_in *addr)
 	addr->sin_port = htons(port);
 	memcpy(&addr->sin_addr.s_addr, srv->h_addr_list[0], srv->h_length);
 
+	if (!bb_data->hostname) {
+		static char hn[512] = "\0";
+
+		int ret = gethostname(hn, 512);
+		if (ret < 0) {
+			syslog(LOG_ERR, "gethostname() failed, set hostname manually with hostname= mount option\n");
+			free(logspec);
+			return -1;
+		}
+		bb_data->hostname = hn;
+	}
+
+	free(logspec);
 	return sock;
 }
 
 int log_send(struct bb_state *bb_data, struct file_state *file_state,
 	     const char *filename, const char *msg, int len, off_t offset)
 {
-	static char hn[512] = "\0";
 	char buf[LOG_PACKET_LENGTH];
 	char off[64];
 	int i, l, m, n, chunk, ret;
@@ -123,13 +139,10 @@ int log_send(struct bb_state *bb_data, struct file_state *file_state,
 	b64len += n;
 	// fprintf(stderr, "b64: '%s'\n", b64);
 
-	ret = gethostname(hn, 512);
-	if (ret < 0)
-		strcpy(hn, inet_ntoa(bb_data->log_addr.sin_addr));
 	n = sprintf(buf, "<%d>", prio);
 	n += strftime(buf + n, LOG_PACKET_LENGTH - n, "%b %e %T ", &tm);
-	strncat(buf + n, hn, LOG_PACKET_LENGTH - n);
-	n += strlen(hn);
+	strncat(buf + n, bb_data->hostname, LOG_PACKET_LENGTH - n);
+	n += strlen(bb_data->hostname);
 	m = snprintf(buf + n, LOG_PACKET_LENGTH - n, " %s:%08x ", filename, 0);
 	if (m >= LOG_PACKET_LENGTH - n) {
 		syslog(LOG_ERR, "filename too long, not sending log message");

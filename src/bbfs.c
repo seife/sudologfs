@@ -752,6 +752,7 @@ void bb_usage()
 		" (or sudologfs rootDir mountPoint loghost[:port] for backwards compat)\n"
 		"\n"
 		"    -o syslog=loghost[:port]	set syslog destination\n"
+		"    -o hostname=hostname	set source hostname in the syslog message\n"
 		);
 }
 
@@ -801,6 +802,7 @@ static int sudologfs_opt_proc(void *bb_state, const char *arg, int key,
 
 static struct fuse_opt sudologfs_opts[] = {
 	SUDOLOGFS_OPT("syslog=%s", logspec, 0),
+	SUDOLOGFS_OPT("hostname=%s", hostname, 0),
 
 	FUSE_OPT_END
 };
@@ -834,7 +836,7 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	bb_data->log_fd = log_open(strdup(bb_data->logspec), &bb_data->log_addr);
+	bb_data->log_fd = log_open(bb_data);
 	if (bb_data->log_fd < 0) {
 		fprintf(stderr, "Parsing logspec '%s' failed, this is a fatal error.\n", bb_data->logspec);
 		free(bb_data->rootdir);
@@ -842,7 +844,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	syslog(LOG_NOTICE, "mounting %s to %s, logging to %s", bb_data->rootdir, bb_data->mountpoint, bb_data->logspec);
+	syslog(LOG_NOTICE, "mounting %s to %s, logging to %s for hostname %s", bb_data->rootdir, bb_data->mountpoint, bb_data->logspec, bb_data->hostname);
 
 	// turn over control to fuse
 	fuse_stat = fuse_main(args.argc, args.argv, &bb_oper, bb_data);
