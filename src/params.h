@@ -24,6 +24,8 @@
 #endif
 struct bb_state {
 	char *rootdir;
+	char *mountpoint;
+	char *logspec;
 	struct sockaddr_in log_addr;
 	int log_fd;
 };

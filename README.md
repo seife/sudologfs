@@ -32,6 +32,10 @@ Example for rsyslogd, put this into /etc/rsyslog.d/sudologfs-receiver.conf
         ?SudologFile
     }
 
+## Example fstab
+
+    /var/log/sudo-backing /var/log/sudo-io  fusefs.sudologfs   rw,mountprog=/usr/local/bin/sudologfs,syslog=192.0.2.10:514
+
 ## Limitations
   * Long file names will not work (the filename/sequence number prefix will use all the space in the syslog packet)  
     This is a deliberate design decision in order to allow easy extraction of the data from the receiving log server.
