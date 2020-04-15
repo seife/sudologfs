@@ -27,7 +27,7 @@ struct bb_state {
 	char *mountpoint;
 	char *logspec;
 	char *hostname;
-	struct sockaddr_in log_addr;
+	struct sockaddr_storage log_addr;
 	int log_fd;
 };
 #define BB_DATA ((struct bb_state *) fuse_get_context()->private_data)

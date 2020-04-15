@@ -5,7 +5,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
-#include <arpa/inet.h>	/* inet_ntoa */
 #include <errno.h>
 #include <unistd.h>
 #include <syslog.h>
@@ -47,15 +46,26 @@ static uint16_t strtouint16(const char* nptr, char** endptr, int base)
 	return (uint16_t)val;
 }
 
-int log_open(struct bb_state *bb_data /* char *hostname, struct sockaddr_in *addr */)
+int log_open(struct bb_state *bb_data)
 {
-	struct hostent *srv;
 	int sock;
+	int gai;
 	uint16_t port = 514;
 	char *portstr;
 	char *endptr;
 	char *logspec = strdup(bb_data->logspec);
-	struct sockaddr_in *addr = &bb_data->log_addr;
+	struct sockaddr *addr = (struct sockaddr *) &bb_data->log_addr;
+	struct addrinfo *result;
+	struct addrinfo hints;
+
+	hints.ai_flags = 0;
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_DGRAM;
+	hints.ai_protocol = IPPROTO_UDP;
+	hints.ai_addrlen = 0;
+	hints.ai_canonname = NULL;
+	hints.ai_addr = NULL;
+	hints.ai_next = NULL;
 
 	portstr = strrchr(logspec, ':');
 	if (portstr) {
@@ -68,26 +78,27 @@ int log_open(struct bb_state *bb_data /* char *hostname, struct sockaddr_in *add
 			syslog(LOG_ERR, "invalid port number: %m");
 			return -1;
 		}
+	} else {
+	    portstr = strdup("514");
+	}
+
+	gai = getaddrinfo(logspec, portstr, &hints, &result);
+	if (gai != 0) {
+		syslog(LOG_ERR, "getaddrinfo(%s): %s", logspec, gai_strerror(gai));
+		return -1;
 	}
 
 	openlog(NULL, LOG_PERROR|LOG_PID, LOG_DAEMON);
-	sock = socket(AF_INET, SOCK_DGRAM, 0);
+	// XXX assume only one result from getaddrinfo
+	sock = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
 	if (sock < 0) {
 		syslog(LOG_ERR, "socket: %m");
 		free(logspec);
 		return sock;
 	}
-	/* gethostbyname(3): "Here name is either a hostname or an IPv4 address in standard dot notation" */
-	srv = gethostbyname(logspec);
-	if (!srv) {
-		syslog(LOG_ERR, "gethostbyname(%s): %s", logspec, strerror(h_errno));
-		free(logspec);
-		return -1;
-	}
-	memset(addr, 0, sizeof(struct sockaddr_in));
-	addr->sin_family = AF_INET;
-	addr->sin_port = htons(port);
-	memcpy(&addr->sin_addr.s_addr, srv->h_addr_list[0], srv->h_length);
+
+	memcpy(addr, result->ai_addr, result->ai_addrlen);
+	freeaddrinfo(result);
 
 	if (!bb_data->hostname) {
 		static char hn[512] = "\0";
@@ -182,7 +193,7 @@ int log_send(struct bb_state *bb_data, struct file_state *file_state,
 		m = b64len - i + n + l;
 		if (m > LOG_PACKET_LENGTH)
 			m = LOG_PACKET_LENGTH;
-		ret = sendto(bb_data->log_fd, buf, m, 0, (struct sockaddr *)&(bb_data->log_addr), sizeof(struct sockaddr_in));
+		ret = sendto(bb_data->log_fd, buf, m, 0, (struct sockaddr *)&(bb_data->log_addr), ((struct sockaddr *)&(bb_data->log_addr))->sa_len);
 		if (ret < 0) {
 			syslog(LOG_ERR, "Error, send() failed: %m");
 			//return 1;
