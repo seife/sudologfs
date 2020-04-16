@@ -1,6 +1,7 @@
 /*
    sudolog File System
    Copyright (C) 2016 Stefan Seyfried, <seife@tuxbox-git.slipkontur.de>
+   Updated to libfuse 3.x by Erik Inge Bolsø, <erik.inge.bolso@modirum.com>
 
    This file system is intended to immediately ship the contents of the
    created files to a remote syslog server via UDP syslog protocol, to
@@ -36,12 +37,18 @@
 #include <fuse.h>
 #include <libgen.h>
 #include <limits.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <syslog.h>
+#include <utime.h>
+
+#ifdef HAVE_SYS_STAT_H
+#include <sys/stat.h>
+#endif
 
 #ifdef HAVE_SYS_XATTR_H
 #include <sys/xattr.h>
@@ -68,6 +75,23 @@ static void bb_fullpath(char fpath[PATH_MAX], const char *path)
 	// break here
 }
 
+// helper to kill suid/sgid bits where needed
+static int bb_resetmodebits(const char *fpath)
+{
+	struct stat *statbuf;
+	statbuf = (struct stat *)calloc(1, sizeof(struct stat));
+	int retstat = stat(fpath, statbuf);
+	if (retstat == 0 && statbuf->st_mode & (S_ISUID|S_ISGID)) {
+		mode_t mode = statbuf->st_mode;
+		mode &= ~S_ISUID;
+		mode &= ~S_ISGID;
+		free(statbuf);
+		RETURN(chmod(fpath, mode));
+	}
+	free(statbuf);
+	RETURN(0);
+}
+
 ///////////////////////////////////////////////////////////
 //
 // Prototypes for all these functions, and the C-style comments,
@@ -76,10 +100,15 @@ static void bb_fullpath(char fpath[PATH_MAX], const char *path)
 /** Get file attributes.
  *
  * Similar to stat().  The 'st_dev' and 'st_blksize' fields are
- * ignored.  The 'st_ino' field is ignored except if the 'use_ino'
- * mount option is given.
+ * ignored. The 'st_ino' field is ignored except if the 'use_ino'
+ * mount option is given. In that case it is passed to userspace,
+ * but libfuse and the kernel will still assign a different
+ * inode for internal use (called the "nodeid").
+ *
+ * `fi` will always be NULL if the file is not currently open, but
+ * may also be NULL if the file is open.
  */
-int bb_getattr(const char *path, struct stat *statbuf)
+int bb_getattr(const char *path, struct stat *statbuf, struct fuse_file_info *UNUSED(fi))
 {
 	int retstat;
 	char fpath[PATH_MAX];
@@ -120,10 +149,10 @@ int bb_readlink(const char *UNUSED(path), char *link, size_t size)
 
 /** Create a file node
  *
- * There is no create() operation, mknod() will be called for
- * creation of all non-directory, non-symlink nodes.
+ * This is called for creation of all non-directory, non-symlink
+ * nodes.  If the filesystem defines a create() method, then for
+ * regular files that will be called instead.
  */
-// shouldn't that comment be "if" there is no.... ?
 int bb_mknod(const char *path, mode_t mode, dev_t dev)
 {
 	int retstat;
@@ -149,13 +178,18 @@ int bb_mknod(const char *path, mode_t mode, dev_t dev)
 	RETURN(retstat);
 }
 
-/** Create a directory */
+/** Create a directory
+ *
+ * Note that the mode argument may not have the type specification
+ * bits set, i.e. S_ISDIR(mode) can be false.  To obtain the
+ * correct directory type bits use  mode|S_IFDIR
+ * */
 int bb_mkdir(const char *path, mode_t mode)
 {
 	char fpath[PATH_MAX];
 	CHECKPERM;
 	bb_fullpath(fpath, path);
-	RETURN(mkdir(fpath, mode));
+	RETURN(mkdir(fpath, mode|S_IFDIR));
 }
 
 /** Remove a file */
@@ -189,15 +223,30 @@ int bb_symlink(const char *path, const char *link)
 	RETURN(symlink(path, flink));
 }
 
-/** Rename a file */
+/** Rename a file
+ *
+ * *flags* may be `RENAME_EXCHANGE` or `RENAME_NOREPLACE`. If
+ * RENAME_NOREPLACE is specified, the filesystem must not
+ * overwrite *newname* if it exists and return an error
+ * instead. If `RENAME_EXCHANGE` is specified, the filesystem
+ * must atomically exchange the two files, i.e. both must
+ * exist and neither may be deleted.
+ */
 // both path and newpath are fs-relative
-int bb_rename(const char *path, const char *newpath)
+int bb_rename(const char *path, const char *newpath, unsigned int flags)
 {
 	char fpath[PATH_MAX];
 	char fnewpath[PATH_MAX];
 	CHECKPERM;
 	bb_fullpath(fpath, path);
 	bb_fullpath(fnewpath, newpath);
+	if (flags) {
+#ifdef HAVE_RENAMEAT2
+		return(renameat2(0, fpath, 0, fnewpath, flags));
+#else
+		return -EINVAL;
+#endif
+	}
 	RETURN(rename(fpath, fnewpath));
 }
 
@@ -211,8 +260,13 @@ int bb_link(const char *path, const char *newpath)
 	RETURN(link(fpath, fnewpath));
 }
 
-/** Change the permission bits of a file */
-int bb_chmod(const char *path, mode_t mode)
+
+/** Change the permission bits of a file
+ *
+ * `fi` will always be NULL if the file is not currenlty open, but
+ * may also be NULL if the file is open.
+ */
+int bb_chmod(const char *path, mode_t mode, struct fuse_file_info *UNUSED(fi))
 {
 	char fpath[PATH_MAX];
 	CHECKPERM;
@@ -220,45 +274,109 @@ int bb_chmod(const char *path, mode_t mode)
 	RETURN(chmod(fpath, mode));
 }
 
-/** Change the owner and group of a file */
-int bb_chown(const char *path, uid_t uid, gid_t gid)
-
+/** Change the owner and group of a file
+ *
+ * `fi` will always be NULL if the file is not currenlty open, but
+ * may also be NULL if the file is open.
+ *
+ * Unless FUSE_CAP_HANDLE_KILLPRIV is disabled, this method is
+ * expected to reset the setuid and setgid bits.
+ */
+int bb_chown(const char *path, uid_t uid, gid_t gid, struct fuse_file_info *UNUSED(fi))
 {
 	char fpath[PATH_MAX];
 	CHECKPERM;
 	bb_fullpath(fpath, path);
+	int reset = bb_resetmodebits(fpath);
+	if (reset != 0) return(reset);
 	RETURN(chown(fpath, uid, gid));
 }
 
-/** Change the size of a file */
-int bb_truncate(const char *path, off_t newsize)
+/** Change the size of a file
+ *
+ * `fi` will always be NULL if the file is not currenlty open, but
+ * may also be NULL if the file is open.
+ *
+ * Unless FUSE_CAP_HANDLE_KILLPRIV is disabled, this method is
+ * expected to reset the setuid and setgid bits.
+ */
+int bb_truncate(const char *path, off_t newsize, struct fuse_file_info *UNUSED(fi))
 {
 	char fpath[PATH_MAX];
 	CHECKPERM;
 	bb_fullpath(fpath, path);
+	int reset = bb_resetmodebits(fpath);
+	if (reset != 0) return(reset);
 	RETURN(truncate(fpath, newsize));
 }
 
-/** Change the access and/or modification times of a file */
-/* note -- I'll want to change this as soon as 2.6 is in debian testing */
-int bb_utime(const char *path, struct utimbuf *ubuf)
+/**
+ * Change the access and modification times of a file with
+ * nanosecond resolution
+ *
+ * This supersedes the old utime() interface.  New applications
+ * should use this.
+ *
+ * `fi` will always be NULL if the file is not currenlty open, but
+ * may also be NULL if the file is open.
+ *
+ * See the utimensat(2) man page for details.
+ */
+int bb_utimens(const char *path, const struct timespec tv[2], struct fuse_file_info *UNUSED(fi))
 {
 	char fpath[PATH_MAX];
 	CHECKPERM;
 	bb_fullpath(fpath, path);
 
-	RETURN(utime(fpath, ubuf));
+	RETURN(utimensat(0, fpath, tv, 0));
 }
 
-/** File open operation
+/** Open a file
  *
- * No creation, or truncation flags (O_CREAT, O_EXCL, O_TRUNC)
- * will be passed to open().  Open should check if the operation
- * is permitted for the given flags.  Optionally open may also
- * return an arbitrary filehandle in the fuse_file_info structure,
- * which will be passed to all file operations.
+ * Open flags are available in fi->flags. The following rules
+ * apply.
  *
- * Changed in version 2.2
+ *  - Creation (O_CREAT, O_EXCL, O_NOCTTY) flags will be
+ *    filtered out / handled by the kernel.
+ *
+ *  - Access modes (O_RDONLY, O_WRONLY, O_RDWR, O_EXEC, O_SEARCH)
+ *    should be used by the filesystem to check if the operation is
+ *    permitted.  If the ``-o default_permissions`` mount option is
+ *    given, this check is already done by the kernel before calling
+ *    open() and may thus be omitted by the filesystem.
+ *
+ *  - When writeback caching is enabled, the kernel may send
+ *    read requests even for files opened with O_WRONLY. The
+ *    filesystem should be prepared to handle this.
+ *
+ *  - When writeback caching is disabled, the filesystem is
+ *    expected to properly handle the O_APPEND flag and ensure
+ *    that each write is appending to the end of the file.
+ *
+ *  - When writeback caching is enabled, the kernel will
+ *    handle O_APPEND. However, unless all changes to the file
+ *    come through the kernel this will not work reliably. The
+ *    filesystem should thus either ignore the O_APPEND flag
+ *    (and let the kernel handle it), or return an error
+ *    (indicating that reliably O_APPEND is not available).
+ *
+ * Filesystem may store an arbitrary file handle (pointer,
+ * index, etc) in fi->fh, and use this in other all other file
+ * operations (read, write, flush, release, fsync).
+ *
+ * Filesystem may also implement stateless file I/O and not store
+ * anything in fi->fh.
+ *
+ * There are also some flags (direct_io, keep_cache) which the
+ * filesystem may set in fi, to change the way the file is opened.
+ * See fuse_file_info structure in <fuse_common.h> for more details.
+ *
+ * If this request is answered with an error code of ENOSYS
+ * and FUSE_CAP_NO_OPEN_SUPPORT is set in
+ * `fuse_conn_info.capable`, this is treated as success and
+ * future calls to open will also succeed without being send
+ * to the filesystem process.
+ *
  */
 int bb_open(const char *path, struct fuse_file_info *fi)
 {
@@ -294,8 +412,6 @@ int bb_open(const char *path, struct fuse_file_info *fi)
  * 'direct_io' mount option is specified, in which case the return
  * value of the read system call will reflect the return value of
  * this operation.
- *
- * Changed in version 2.2
  */
 // I don't fully understand the documentation above -- it doesn't
 // match the documentation for the read() system call which says it
@@ -314,18 +430,24 @@ int bb_read(const char *UNUSED(path), char *buf, size_t size, off_t offset, stru
 /** Write data to an open file
  *
  * Write should return exactly the number of bytes requested
- * except on error.  An exception to this is when the 'direct_io'
+ * except on error.      An exception to this is when the 'direct_io'
  * mount option is specified (see read operation).
  *
- * Changed in version 2.2
+ * Unless FUSE_CAP_HANDLE_KILLPRIV is disabled, this method is
+ * expected to reset the setuid and setgid bits.
  */
 // As  with read(), the documentation above is inconsistent with the
 // documentation for the write() system call.
 int bb_write(const char *path, const char *buf, size_t size, off_t offset,
 		struct fuse_file_info *fi)
 {
+	char fpath[PATH_MAX];
 	int retstat = 0;
 	CHECKPERM;
+	bb_fullpath(fpath, path);
+
+	int reset = bb_resetmodebits(fpath);
+	if (reset != 0) return(reset);
 
 	retstat = pwrite(FILE_STATE->fd, buf, size, offset);
 	log_send(BB_DATA, FILE_STATE, path, buf, size, offset);
@@ -334,10 +456,7 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
 
 /** Get file system statistics
  *
- * The 'f_frsize', 'f_favail', 'f_fsid' and 'f_flag' fields are ignored
- *
- * Replaced 'struct statfs' parameter with 'struct statvfs' in
- * version 2.5
+ * The 'f_favail', 'f_fsid' and 'f_flag' fields are ignored
  */
 int bb_statfs(const char *path, struct statvfs *statv)
 {
@@ -356,23 +475,28 @@ int bb_statfs(const char *path, struct statvfs *statv)
  * BIG NOTE: This is not equivalent to fsync().  It's not a
  * request to sync dirty data.
  *
- * Flush is called on each close() of a file descriptor.  So if a
- * filesystem wants to return write errors in close() and the file
- * has cached dirty data, this is a good place to write back data
- * and return any errors.  Since many applications ignore close()
- * errors this is not always useful.
+ * Flush is called on each close() of a file descriptor, as opposed to
+ * release which is called on the close of the last file descriptor for
+ * a file.  Under Linux, errors returned by flush() will be passed to 
+ * userspace as errors from close(), so flush() is a good place to write
+ * back any cached dirty data. However, many applications ignore errors 
+ * on close(), and on non-Linux systems, close() may succeed even if flush()
+ * returns an error. For these reasons, filesystems should not assume
+ * that errors returned by flush will ever be noticed or even
+ * delivered.
  *
  * NOTE: The flush() method may be called more than once for each
- * open().  This happens if more than one file descriptor refers
- * to an opened file due to dup(), dup2() or fork() calls.  It is
- * not possible to determine if a flush is final, so each flush
- * should be treated equally.  Multiple write-flush sequences are
- * relatively rare, so this shouldn't be a problem.
+ * open().  This happens if more than one file descriptor refers to an
+ * open file handle, e.g. due to dup(), dup2() or fork() calls.  It is
+ * not possible to determine if a flush is final, so each flush should
+ * be treated equally.  Multiple write-flush sequences are relatively
+ * rare, so this shouldn't be a problem.
  *
- * Filesystems shouldn't assume that flush will always be called
- * after some writes, or that if will be called at all.
+ * Filesystems shouldn't assume that flush will be called at any
+ * particular point.  It may be called more times than expected, or not
+ * at all.
  *
- * Changed in version 2.2
+ * [close]: http://pubs.opengroup.org/onlinepubs/9699919799/functions/close.html
  */
 // this is a no-op in BBFS.  It just logs the call and returns success
 int bb_flush(const char *UNUSED(path), struct fuse_file_info *UNUSED(fi))
@@ -388,12 +512,10 @@ int bb_flush(const char *UNUSED(path), struct fuse_file_info *UNUSED(fi))
  * are unmapped.
  *
  * For every open() call there will be exactly one release() call
- * with the same flags and file descriptor.  It is possible to
+ * with the same flags and file handle.  It is possible to
  * have a file opened more than once, in which case only the last
  * release will mean, that no more reads/writes will happen on the
  * file.  The return value of release is ignored.
- *
- * Changed in version 2.2
  */
 int bb_release(const char *UNUSED(path), struct fuse_file_info *fi)
 {
@@ -408,8 +530,6 @@ int bb_release(const char *UNUSED(path), struct fuse_file_info *fi)
  *
  * If the datasync parameter is non-zero, then only the user data
  * should be flushed, not the meta data.
- *
- * Changed in version 2.2
  */
 int bb_fsync(const char *UNUSED(path), int datasync, struct fuse_file_info *fi)
 {
@@ -471,10 +591,11 @@ int bb_removexattr(const char *path, const char *name)
 
 /** Open directory
  *
- * This method should check if the open operation is permitted for
- * this  directory
- *
- * Introduced in version 2.3
+ * Unless the 'default_permissions' mount option is given,
+ * this method should check if opendir is permitted for this
+ * directory. Optionally opendir may also return an arbitrary
+ * filehandle in the fuse_file_info structure, which will be
+ * passed to readdir, releasedir and fsyncdir.
  */
 int bb_opendir(const char *path, struct fuse_file_info *fi)
 {
@@ -497,28 +618,22 @@ int bb_opendir(const char *path, struct fuse_file_info *fi)
 
 /** Read directory
  *
- * This supersedes the old getdir() interface.  New applications
- * should use this.
- *
  * The filesystem may choose between two modes of operation:
  *
  * 1) The readdir implementation ignores the offset parameter, and
  * passes zero to the filler function's offset.  The filler
  * function will not return '1' (unless an error happens), so the
- * whole directory is read in a single readdir operation.  This
- * works just like the old getdir() method.
+ * whole directory is read in a single readdir operation.
  *
  * 2) The readdir implementation keeps track of the offsets of the
  * directory entries.  It uses the offset parameter and always
  * passes non-zero offset to the filler function.  When the buffer
  * is full (or an error happens) the filler function will return
  * '1'.
- *
- * Introduced in version 2.3
  */
 
 int bb_readdir(const char *UNUSED(path), void *buf, fuse_fill_dir_t filler, off_t UNUSED(offset),
-		struct fuse_file_info *fi)
+		struct fuse_file_info *fi, enum fuse_readdir_flags UNUSED(flags))
 {
 	int retstat = 0;
 	DIR *dp;
@@ -542,7 +657,7 @@ int bb_readdir(const char *UNUSED(path), void *buf, fuse_fill_dir_t filler, off_
 	// returns something non-zero.  The first case just means I've
 	// read the whole directory; the second means the buffer is full.
 	do {
-		if (filler(buf, de->d_name, NULL, 0) != 0) {
+		if (filler(buf, de->d_name, NULL, 0, 0) != 0) {
 			return -ENOMEM;
 		}
 	} while ((de = readdir(dp)) != NULL);
@@ -551,8 +666,6 @@ int bb_readdir(const char *UNUSED(path), void *buf, fuse_fill_dir_t filler, off_
 }
 
 /** Release directory
- *
- * Introduced in version 2.3
  */
 int bb_releasedir(const char *UNUSED(path), struct fuse_file_info *fi)
 {
@@ -565,8 +678,6 @@ int bb_releasedir(const char *UNUSED(path), struct fuse_file_info *fi)
  *
  * If the datasync parameter is non-zero, then only the user data
  * should be flushed, not the meta data
- *
- * Introduced in version 2.3
  */
 // when exactly is this called?  when a user calls fsync and it
 // happens to be a directory? ??? >>> I need to implement this...
@@ -576,15 +687,14 @@ int bb_fsyncdir(const char *UNUSED(path), int UNUSED(datasync), struct fuse_file
 	return retstat;
 }
 
+
 /**
  * Initialize filesystem
  *
- * The return value will passed in the private_data field of
- * fuse_context to all file operations and as a parameter to the
- * destroy() method.
- *
- * Introduced in version 2.3
- * Changed in version 2.6
+ * The return value will passed in the `private_data` field of
+ * `struct fuse_context` to all file operations, and as a
+ * parameter to the destroy() method. It overrides the initial
+ * value provided to fuse_main() / fuse_new().
  */
 // Undocumented but extraordinarily useful fact:  the fuse_context is
 // set up before this function is called, and
@@ -593,7 +703,7 @@ int bb_fsyncdir(const char *UNUSED(path), int UNUSED(datasync), struct fuse_file
 // parameter coming in here, or else the fact should be documented
 // (and this might as well return void, as it did in older versions of
 // FUSE).
-void *bb_init(struct fuse_conn_info *UNUSED(conn))
+void *bb_init(struct fuse_conn_info *UNUSED(conn), struct fuse_config *UNUSED(cfg))
 {
 	return BB_DATA;
 }
@@ -602,8 +712,6 @@ void *bb_init(struct fuse_conn_info *UNUSED(conn))
  * Clean up filesystem
  *
  * Called on filesystem exit.
- *
- * Introduced in version 2.3
  */
 void bb_destroy(void *userdata)
 {
@@ -621,8 +729,6 @@ void bb_destroy(void *userdata)
  * called.
  *
  * This method is not called under Linux kernel versions 2.4.x
- *
- * Introduced in version 2.5
  */
 int bb_access(const char *path, int mask)
 {
@@ -644,64 +750,14 @@ int bb_access(const char *path, int mask)
  * If this method is not implemented or under Linux kernel
  * versions earlier than 2.6.15, the mknod() and open() methods
  * will be called instead.
- *
- * Introduced in version 2.5
  */
 // Not implemented.  I had a version that used creat() to create and
 // open the file, which it turned out opened the file write-only.
 
-/**
- * Change the size of an open file
- *
- * This method is called instead of the truncate() method if the
- * truncation was invoked from an ftruncate() system call.
- *
- * If this method is not implemented or under Linux kernel
- * versions earlier than 2.6.15, the truncate() method will be
- * called instead.
- *
- * Introduced in version 2.5
- */
-int bb_ftruncate(const char *UNUSED(path), off_t offset, struct fuse_file_info *fi)
-{
-	int retstat = 0;
-	CHECKPERM;
-	retstat = ftruncate(FILE_STATE->fd, offset);
-	RETURN(retstat);
-}
-
-/**
- * Get attributes from an open file
- *
- * This method is called instead of the getattr() method if the
- * file information is available.
- *
- * Currently this is only called after the create() method if that
- * is implemented (see above).  Later it may be called for
- * invocations of fstat() too.
- *
- * Introduced in version 2.5
- */
-int bb_fgetattr(const char *path, struct stat *statbuf, struct fuse_file_info *fi)
-{
-	int retstat = 0;
-	CHECKPERM;
-	// On FreeBSD, trying to do anything with the mountpoint ends up
-	// opening it, and then using the FD for an fgetattr.  So in the
-	// special case of a path of "/", I need to do a getattr on the
-	// underlying root directory instead of doing the fgetattr().
-	if (!strcmp(path, "/"))
-		return bb_getattr(path, statbuf);
-
-	retstat = fstat(FILE_STATE->fd, statbuf);
-	RETURN(retstat);
-}
 
 struct fuse_operations bb_oper = {
 	.getattr = bb_getattr,
 	.readlink = bb_readlink,
-	// no .getdir -- that's deprecated
-	.getdir = NULL,
 	.mknod = bb_mknod,
 	.mkdir = bb_mkdir,
 	.unlink = bb_unlink,
@@ -712,11 +768,9 @@ struct fuse_operations bb_oper = {
 	.chmod = bb_chmod,
 	.chown = bb_chown,
 	.truncate = bb_truncate,
-	.utime = bb_utime,
 	.open = bb_open,
 	.read = bb_read,
 	.write = bb_write,
-	/** Just a placeholder, don't set */ // huh???
 	.statfs = bb_statfs,
 	.flush = bb_flush,
 	.release = bb_release,
@@ -736,57 +790,122 @@ struct fuse_operations bb_oper = {
 	.init = bb_init,
 	.destroy = bb_destroy,
 	.access = bb_access,
-	.ftruncate = bb_ftruncate,
-	.fgetattr = bb_fgetattr
+	.lock = NULL,
+	.utimens = bb_utimens,
+	.bmap = NULL,
+	.ioctl = NULL,
+	.poll = NULL,
+	.write_buf = NULL,
+	.read_buf = NULL,
+	.flock = NULL,
+	.fallocate = NULL,
+	.copy_file_range = NULL,
+	.lseek = NULL
 };
 
 void bb_usage()
 {
-	fprintf(stderr, "usage:  bbfs [FUSE and mount options] rootDir mountPoint loghost\n");
-	abort();
+	fprintf(stderr,
+		"usage:  sudologfs rootDir mountPoint [options]\n"
+		" (or sudologfs rootDir mountPoint loghost[:port] for backwards compat)\n"
+		"\n"
+		"    -o syslog=loghost[:port]	set syslog destination\n"
+		"    -o hostname=hostname	set source hostname in the syslog message\n"
+		);
 }
+
+static int sudologfs_opt_proc(void *bb_state, const char *arg, int key,
+                          struct fuse_args *outargs)
+{
+	(void) outargs;
+	struct bb_state *state = (struct bb_state *) bb_state;
+
+	switch (key) {
+	case FUSE_OPT_KEY_OPT:
+		/* Pass through */
+		return 1;
+
+	case FUSE_OPT_KEY_NONOPT:
+		// first non-option: rootdir, we'll keep that
+		if (!state->rootdir) {
+			state->rootdir = realpath(arg, NULL);
+			if (state->rootdir) {
+				return 0;
+			} else {
+				fprintf(stderr, "rootdir did not resolve to path");
+				return -1;
+			}
+		}
+		// second non-option: mountpoint, pass on to libfuse
+		else if (!state->mountpoint) {
+			state->mountpoint = strdup(arg);
+			return 1;
+		}
+		// third non-option, only with manual non-fstab mounts: logspec, we'll keep that
+		else if (!state->logspec) {
+			state->logspec = strdup(arg);
+			return 0;
+		}
+
+		fprintf(stderr, "sudologfs: invalid argument `%s'\n", arg);
+		return -1;
+
+	default:
+		fprintf(stderr, "internal option parsing error\n");
+		abort();
+	}
+}
+
+#define SUDOLOGFS_OPT(t, p, v) { t, offsetof(struct bb_state, p), v }
+
+static struct fuse_opt sudologfs_opts[] = {
+	SUDOLOGFS_OPT("syslog=%s", logspec, 0),
+	SUDOLOGFS_OPT("hostname=%s", hostname, 0),
+
+	FUSE_OPT_END
+};
 
 int main(int argc, char *argv[])
 {
 	int fuse_stat;
 	struct bb_state *bb_data;
+	char *logspec;
+	struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
 
 	// See which version of fuse we're running
 	fprintf(stderr, "Fuse library version %d.%d\n", FUSE_MAJOR_VERSION, FUSE_MINOR_VERSION);
 
-	// Perform some sanity checking on the command line:  make sure
-	// there are enough arguments, and that neither of the last three
-	// start with a hyphen (this will break if you actually have a
-	// rootpoint or mountpoint whose name starts with a hyphen, but so
-	// will a zillion other programs)
-	if ((argc < 4) || (argv[argc-3][0] == '-') || (argv[argc-2][0] == '-') || (argv[argc-1][0] == '-'))
-		bb_usage();
-
-	bb_data = malloc(sizeof(struct bb_state));
+	bb_data = calloc(1, sizeof(struct bb_state));
 	if (bb_data == NULL) {
 		perror("main calloc");
 		abort();
 	}
 
-	// Pull the rootdir out of the argument list and save it in my
-	// internal data
-	/* realpath malloc()'s the space, so free it in destroy() */
-	bb_data->rootdir = realpath(argv[argc-3], NULL);
-	bb_data->log_fd = log_open(argv[argc-1], &bb_data->log_addr);
+	if (fuse_opt_parse(&args, bb_data, sudologfs_opts, sudologfs_opt_proc) == -1)
+	{
+		bb_usage();
+		exit(1);
+	}
+	fuse_opt_add_arg(&args, "-oallow_other");
+
+	if (!(bb_data->rootdir && bb_data->mountpoint && bb_data->logspec)) {
+		fprintf(stderr, "too few arguments\n");
+		bb_usage();
+		exit(1);
+	}
+
+	bb_data->log_fd = log_open(bb_data);
 	if (bb_data->log_fd < 0) {
-		fprintf(stderr, "Resolving '%s' failed, this is a fatal error.\n", argv[argc-1]);
+		fprintf(stderr, "Parsing logspec '%s' failed, this is a fatal error.\n", bb_data->logspec);
 		free(bb_data->rootdir);
 		free(bb_data);
 		return 1;
 	}
-	/* ugly hack :-) */
-	argv[argc-3] = "-oallow_other";
-	syslog(LOG_NOTICE, "mounting %s to %s, logging to %s", bb_data->rootdir, argv[argc-2], argv[argc-1]);
-	/* remove loghost parameter */
-	argv[argc-1] = NULL;
-	argc--;
+
+	syslog(LOG_NOTICE, "mounting %s to %s, logging to %s for hostname %s", bb_data->rootdir, bb_data->mountpoint, bb_data->logspec, bb_data->hostname);
+
 	// turn over control to fuse
-	fuse_stat = fuse_main(argc, argv, &bb_oper, bb_data);
+	fuse_stat = fuse_main(args.argc, args.argv, &bb_oper, bb_data);
 	syslog(LOG_NOTICE, "exiting with %d", fuse_stat);
 	closelog();
 

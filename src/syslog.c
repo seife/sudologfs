@@ -5,11 +5,11 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
-#include <arpa/inet.h>	/* inet_ntoa */
 #include <errno.h>
 #include <unistd.h>
 #include <syslog.h>
 #include <stdlib.h>	/* malloc */
+#include <limits.h>
 #include <time.h>	/* strftime */
 #include <inttypes.h>	/* PRIx64 */
 #include "cencode.h"
@@ -27,34 +27,99 @@
  */
 #define MIN_BUF_SPACE 128
 
-int log_open(char *hostname, struct sockaddr_in *addr)
+static uint16_t strtouint16(const char* nptr, char** endptr, int base)
 {
-	struct hostent *srv;
-	int sock;
-	openlog(NULL, LOG_PERROR|LOG_PID, LOG_DAEMON);
-	sock = socket(AF_INET, SOCK_DGRAM, 0);
-	if (sock < 0) {
-		syslog(LOG_ERR, "socket: %m");
-		return sock;
+	errno = 0;
+	long val = strtol(nptr, endptr, 10);
+	if (endptr && **endptr != '\0') {
+		/* garbage in the string */
+		errno = EINVAL;
+		return 0;
 	}
-	/* gethostbyname(3): "Here name is either a hostname or an IPv4 address in standard dot notation" */
-	srv = gethostbyname(hostname);
-	if (!srv) {
-		syslog(LOG_ERR, "gethostbyname(%s): %s", hostname, strerror(h_errno));
+	if (errno || (endptr && *endptr == nptr)) {
+		return 0;
+	}
+	if (val < 0 || val > UINT16_MAX) {
+		errno = ERANGE;
+		return 0;
+	}
+	return (uint16_t)val;
+}
+
+int log_open(struct bb_state *bb_data)
+{
+	int sock;
+	int gai;
+	uint16_t port = 514;
+	char *portstr;
+	char *endptr;
+	char *logspec = strdup(bb_data->logspec);
+	struct sockaddr *addr = (struct sockaddr *) &bb_data->log_addr;
+	struct addrinfo *result;
+	struct addrinfo hints;
+
+	hints.ai_flags = 0;
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_DGRAM;
+	hints.ai_protocol = IPPROTO_UDP;
+	hints.ai_addrlen = 0;
+	hints.ai_canonname = NULL;
+	hints.ai_addr = NULL;
+	hints.ai_next = NULL;
+
+	portstr = strrchr(logspec, ':');
+	if (portstr) {
+		*portstr = '\0';
+		portstr = portstr+1;
+		port = strtouint16(portstr, &endptr, 10);
+		if (errno) {
+			fprintf(stderr, "invalid port number: ");
+			perror(NULL);
+			syslog(LOG_ERR, "invalid port number: %m");
+			return -1;
+		}
+	} else {
+	    portstr = strdup("514");
+	}
+
+	gai = getaddrinfo(logspec, portstr, &hints, &result);
+	if (gai != 0) {
+		syslog(LOG_ERR, "getaddrinfo(%s): %s", logspec, gai_strerror(gai));
 		return -1;
 	}
-	memset(addr, 0, sizeof(struct sockaddr_in));
-	addr->sin_family = AF_INET;
-	addr->sin_port = htons(514);
-	memcpy(&addr->sin_addr.s_addr, srv->h_addr_list[0], srv->h_length);
 
+	openlog(NULL, LOG_PERROR|LOG_PID, LOG_DAEMON);
+	// XXX assume only one result from getaddrinfo
+	sock = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+	if (sock < 0) {
+		syslog(LOG_ERR, "socket: %m");
+		free(logspec);
+		return sock;
+	}
+
+	memcpy(addr, result->ai_addr, result->ai_addrlen);
+	bb_data->la_sa_len = result->ai_addrlen;
+	freeaddrinfo(result);
+
+	if (!bb_data->hostname) {
+		static char hn[512] = "\0";
+
+		int ret = gethostname(hn, 512);
+		if (ret < 0) {
+			syslog(LOG_ERR, "gethostname() failed, set hostname manually with hostname= mount option\n");
+			free(logspec);
+			return -1;
+		}
+		bb_data->hostname = hn;
+	}
+
+	free(logspec);
 	return sock;
 }
 
 int log_send(struct bb_state *bb_data, struct file_state *file_state,
 	     const char *filename, const char *msg, int len, off_t offset)
 {
-	static char hn[512] = "\0";
 	char buf[LOG_PACKET_LENGTH];
 	char off[64];
 	int i, l, m, n, chunk, ret;
@@ -86,13 +151,10 @@ int log_send(struct bb_state *bb_data, struct file_state *file_state,
 	b64len += n;
 	// fprintf(stderr, "b64: '%s'\n", b64);
 
-	ret = gethostname(hn, 512);
-	if (ret < 0)
-		strcpy(hn, inet_ntoa(bb_data->log_addr.sin_addr));
 	n = sprintf(buf, "<%d>", prio);
 	n += strftime(buf + n, LOG_PACKET_LENGTH - n, "%b %e %T ", &tm);
-	strncat(buf + n, hn, LOG_PACKET_LENGTH - n);
-	n += strlen(hn);
+	strncat(buf + n, bb_data->hostname, LOG_PACKET_LENGTH - n);
+	n += strlen(bb_data->hostname);
 	m = snprintf(buf + n, LOG_PACKET_LENGTH - n, " %s:%08x ", filename, 0);
 	if (m >= LOG_PACKET_LENGTH - n) {
 		syslog(LOG_ERR, "filename too long, not sending log message");
@@ -132,7 +194,7 @@ int log_send(struct bb_state *bb_data, struct file_state *file_state,
 		m = b64len - i + n + l;
 		if (m > LOG_PACKET_LENGTH)
 			m = LOG_PACKET_LENGTH;
-		ret = sendto(bb_data->log_fd, buf, m, 0, (struct sockaddr *)&(bb_data->log_addr), sizeof(struct sockaddr_in));
+		ret = sendto(bb_data->log_fd, buf, m, 0, (struct sockaddr *)&(bb_data->log_addr), bb_data->la_sa_len);
 		if (ret < 0) {
 			syslog(LOG_ERR, "Error, send() failed: %m");
 			//return 1;

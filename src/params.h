@@ -13,15 +13,22 @@
 
 // The FUSE API has been changed a number of times.  So, our code
 // needs to define the version of the API that we assume.  As of this
-// writing, the most current API version is 26
-#define FUSE_USE_VERSION 26
+// writing, the most current API version is 35
+#define FUSE_USE_VERSION 35
 
 // maintain bbfs state in here
 #include <limits.h>
 #include <stdio.h>
+#ifdef HAVE_NETINET_IN_H
+#  include <netinet/in.h>
+#endif
 struct bb_state {
 	char *rootdir;
-	struct sockaddr_in log_addr;
+	char *mountpoint;
+	char *logspec;
+	char *hostname;
+	struct sockaddr_storage log_addr;
+	int la_sa_len;
 	int log_fd;
 };
 #define BB_DATA ((struct bb_state *) fuse_get_context()->private_data)
