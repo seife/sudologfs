@@ -75,6 +75,23 @@ static void bb_fullpath(char fpath[PATH_MAX], const char *path)
 	// break here
 }
 
+// helper to kill suid/sgid bits where needed
+static int bb_resetmodebits(const char *fpath)
+{
+	struct stat *statbuf;
+	statbuf = (struct stat *)calloc(1, sizeof(struct stat));
+	int retstat = stat(fpath, statbuf);
+	if (retstat == 0 && statbuf->st_mode & (S_ISUID|S_ISGID)) {
+		mode_t mode = statbuf->st_mode;
+		mode &= ~S_ISUID;
+		mode &= ~S_ISGID;
+		free(statbuf);
+		RETURN(chmod(fpath, mode));
+	}
+	free(statbuf);
+	RETURN(0);
+}
+
 ///////////////////////////////////////////////////////////
 //
 // Prototypes for all these functions, and the C-style comments,
@@ -266,12 +283,13 @@ int bb_chmod(const char *path, mode_t mode, struct fuse_file_info *UNUSED(fi))
  * Unless FUSE_CAP_HANDLE_KILLPRIV is disabled, this method is
  * expected to reset the setuid and setgid bits.
  */
-// XXX: reset setuid/setgid bits
 int bb_chown(const char *path, uid_t uid, gid_t gid, struct fuse_file_info *UNUSED(fi))
 {
 	char fpath[PATH_MAX];
 	CHECKPERM;
 	bb_fullpath(fpath, path);
+	int reset = bb_resetmodebits(fpath);
+	if (reset != 0) return(reset);
 	RETURN(chown(fpath, uid, gid));
 }
 
@@ -283,12 +301,13 @@ int bb_chown(const char *path, uid_t uid, gid_t gid, struct fuse_file_info *UNUS
  * Unless FUSE_CAP_HANDLE_KILLPRIV is disabled, this method is
  * expected to reset the setuid and setgid bits.
  */
-// XXX: reset setuid/setgid bits
 int bb_truncate(const char *path, off_t newsize, struct fuse_file_info *UNUSED(fi))
 {
 	char fpath[PATH_MAX];
 	CHECKPERM;
 	bb_fullpath(fpath, path);
+	int reset = bb_resetmodebits(fpath);
+	if (reset != 0) return(reset);
 	RETURN(truncate(fpath, newsize));
 }
 
@@ -418,14 +437,18 @@ int bb_read(const char *UNUSED(path), char *buf, size_t size, off_t offset, stru
  * Unless FUSE_CAP_HANDLE_KILLPRIV is disabled, this method is
  * expected to reset the setuid and setgid bits.
  */
-// XXX: reset setuid/setgid bits
 // As  with read(), the documentation above is inconsistent with the
 // documentation for the write() system call.
 int bb_write(const char *path, const char *buf, size_t size, off_t offset,
 		struct fuse_file_info *fi)
 {
+	char fpath[PATH_MAX];
 	int retstat = 0;
 	CHECKPERM;
+	bb_fullpath(fpath, path);
+
+	int reset = bb_resetmodebits(fpath);
+	if (reset != 0) return(reset);
 
 	retstat = pwrite(FILE_STATE->fd, buf, size, offset);
 	log_send(BB_DATA, FILE_STATE, path, buf, size, offset);
