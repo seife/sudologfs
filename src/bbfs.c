@@ -233,21 +233,20 @@ int bb_symlink(const char *path, const char *link)
  * exist and neither may be deleted.
  */
 // both path and newpath are fs-relative
-// XXX implement via renameat2() on linux, on FreeBSD the flags won't be used
 int bb_rename(const char *path, const char *newpath, unsigned int flags)
 {
 	char fpath[PATH_MAX];
 	char fnewpath[PATH_MAX];
 	CHECKPERM;
+	bb_fullpath(fpath, path);
+	bb_fullpath(fnewpath, newpath);
 	if (flags) {
 #ifdef HAVE_RENAMEAT2
-# error Please implement via renameat2()
+		return(renameat2(0, fpath, 0, fnewpath, flags));
 #else
 		return -EINVAL;
 #endif
 	}
-	bb_fullpath(fpath, path);
-	bb_fullpath(fnewpath, newpath);
 	RETURN(rename(fpath, fnewpath));
 }
 

@@ -32,7 +32,8 @@ AC_TYPE_UINT64_T
 AC_FUNC_CHOWN
 AC_FUNC_LSTAT_FOLLOWS_SLASHED_SYMLINK
 AC_FUNC_MALLOC
-AC_CHECK_FUNCS([ftruncate mkdir mkfifo realpath renameat2 rmdir strerror])
+AC_CHECK_FUNCS([ftruncate mkdir mkfifo realpath rmdir strerror])
+AC_CHECK_FUNCS([renameat2], [AC_DEFINE([_GNU_SOURCE], [1], [Needed for renameat2])])
 AC_CHECK_FUNCS([utimensat],, AC_MSG_FAILURE(['utimensat(2) missing on your system']))
 AC_DEFINE([_XOPEN_SOURCE], [700], [needed for pwrite/pread/lstat/utimensat])
 

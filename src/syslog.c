@@ -98,6 +98,7 @@ int log_open(struct bb_state *bb_data)
 	}
 
 	memcpy(addr, result->ai_addr, result->ai_addrlen);
+	bb_data->la_sa_len = result->ai_addrlen;
 	freeaddrinfo(result);
 
 	if (!bb_data->hostname) {
@@ -193,7 +194,7 @@ int log_send(struct bb_state *bb_data, struct file_state *file_state,
 		m = b64len - i + n + l;
 		if (m > LOG_PACKET_LENGTH)
 			m = LOG_PACKET_LENGTH;
-		ret = sendto(bb_data->log_fd, buf, m, 0, (struct sockaddr *)&(bb_data->log_addr), ((struct sockaddr *)&(bb_data->log_addr))->sa_len);
+		ret = sendto(bb_data->log_fd, buf, m, 0, (struct sockaddr *)&(bb_data->log_addr), bb_data->la_sa_len);
 		if (ret < 0) {
 			syslog(LOG_ERR, "Error, send() failed: %m");
 			//return 1;
